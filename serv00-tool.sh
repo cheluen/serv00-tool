@@ -437,17 +437,13 @@ create_new_app() {
     echo "选择应用类型:"
     echo "1. Python Web 应用"
     echo "2. Node.js 应用"
-    echo "3. 静态网站"
-    echo "4. frp 客户端"
-    echo "5. 通用应用"
-    read -p "请选择 [1-5]: " app_type
+    echo "3. frp 客户端"
+    read -p "请选择 [1-3]: " app_type
 
     case $app_type in
         1) create_python_app "$app_name" ;;
         2) create_nodejs_app "$app_name" ;;
-        3) create_static_app "$app_name" ;;
-        4) create_frpc_app "$app_name" ;;
-        5) create_generic_app "$app_name" ;;
+        3) create_frpc_app "$app_name" ;;
         *) echo -e "${RED}无效选择${NC}"; read -p "按回车键继续..."; return ;;
     esac
 }
@@ -766,153 +762,7 @@ EOF
     echo
 }
 
-# 创建静态网站应用
-create_static_app() {
-    local app_name="$1"
-    local app_dir="$HOME/apps/$app_name"
 
-    echo -e "${YELLOW}创建静态网站应用: $app_name${NC}"
-
-    mkdir -p "$app_dir"
-    cd "$app_dir"
-
-    # 创建基本 HTML 文件
-    cat > index.html << 'EOF'
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Serv00 静态网站</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; }
-        .info { background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 20px 0; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🎉 静态网站运行成功！</h1>
-        <div class="info">
-            <p><strong>服务器:</strong> Serv00.com</p>
-            <p><strong>系统:</strong> FreeBSD</p>
-            <p><strong>时间:</strong> <span id="time"></span></p>
-        </div>
-        <p>这是一个运行在 Serv00 上的静态网站示例。</p>
-        <p>你可以修改 index.html 文件来自定义网站内容。</p>
-    </div>
-    <script>
-        document.getElementById('time').textContent = new Date().toLocaleString();
-    </script>
-</body>
-</html>
-EOF
-
-    # 创建简单的 HTTP 服务器脚本
-    cat > start.sh << 'EOF'
-#!/bin/bash
-cd "$(dirname "$0")"
-port=${PORT:-8080}
-echo "启动静态网站服务器..."
-echo "访问地址: http://$(hostname):$port"
-echo "文档根目录: $(pwd)"
-echo "----------------------------------------"
-
-# 使用 Python 启动简单 HTTP 服务器
-if command -v python3 >/dev/null 2>&1; then
-    python3 -m http.server $port
-elif command -v python >/dev/null 2>&1; then
-    python -m SimpleHTTPServer $port
-else
-    echo "错误: 需要 Python 来运行 HTTP 服务器"
-    exit 1
-fi
-EOF
-
-    chmod +x start.sh
-
-    # 创建应用配置
-    create_app_config "$app_name" "static" "8080"
-
-    echo -e "${GREEN}✓ 静态网站应用 $app_name 创建成功${NC}"
-    echo -e "${WHITE}位置: $app_dir${NC}"
-    echo -e "${WHITE}启动: cd $app_dir && ./start.sh${NC}"
-
-    log "创建静态网站应用: $app_name"
-    read -p "按回车键继续..."
-}
-
-# 创建通用应用
-create_generic_app() {
-    local app_name="$1"
-    local app_dir="$HOME/apps/$app_name"
-
-    echo -e "${YELLOW}创建通用应用: $app_name${NC}"
-
-    mkdir -p "$app_dir"
-    cd "$app_dir"
-
-    # 创建基本启动脚本
-    cat > start.sh << 'EOF'
-#!/bin/bash
-cd "$(dirname "$0")"
-echo "通用应用启动脚本"
-echo "请编辑此文件添加你的启动命令"
-echo "当前目录: $(pwd)"
-echo "----------------------------------------"
-
-# 在这里添加你的启动命令
-# 例如:
-# ./your-program
-# python your-script.py
-# node your-app.js
-
-echo "请编辑 start.sh 文件添加启动命令"
-sleep 5
-EOF
-
-    chmod +x start.sh
-
-    # 创建 README
-    cat > README.md << 'EOF'
-# 通用应用
-
-这是一个通用应用模板。
-
-## 使用方法
-
-1. 将你的程序文件放在此目录
-2. 编辑 `start.sh` 文件，添加启动命令
-3. 通过应用管理启动应用
-
-## 目录结构
-
-```
-your-app/
-├── start.sh          # 启动脚本
-├── README.md          # 说明文档
-├── .app-config       # 应用配置（自动生成）
-└── your-files...     # 你的程序文件
-```
-
-## 注意事项
-
-- 确保你的程序有执行权限
-- 长时间运行的程序会在 screen 会话中运行
-- 查看日志可以通过应用管理功能
-EOF
-
-    # 创建应用配置
-    create_app_config "$app_name" "generic" "0"
-
-    echo -e "${GREEN}✓ 通用应用 $app_name 创建成功${NC}"
-    echo -e "${WHITE}位置: $app_dir${NC}"
-    echo -e "${WHITE}说明: 请编辑 start.sh 添加启动命令${NC}"
-
-    log "创建通用应用: $app_name"
-    read -p "按回车键继续..."
-}
 
 # 创建应用配置文件
 create_app_config() {
@@ -1962,169 +1812,58 @@ show_frp_overview() {
 
 # frp 使用指南
 show_frp_guide() {
-    clear
-    show_banner
     echo -e "${BLUE}=== 📖 frp 使用指南 ===${NC}"
     echo
-    echo -e "${WHITE}🎯 什么是 frp?${NC}"
-    echo "frp 是一个专注于内网穿透的高性能的反向代理应用，支持 TCP、UDP、HTTP、HTTPS 等多种协议。"
+    echo -e "${WHITE}基本概念:${NC}"
+    echo "  frps (服务端) 运行在 serv00 上"
+    echo "  frpc (客户端) 运行在内网机器上"
     echo
-    echo -e "${WHITE}🏗️  基本架构:${NC}"
-    echo "  frps (服务端) ←→ frpc (客户端)"
-    echo "  服务端运行在有公网 IP 的机器上（如 serv00）"
-    echo "  客户端运行在需要被访问的内网机器上"
+    echo -e "${WHITE}使用步骤:${NC}"
+    echo "  1. 安装 frps 服务端"
+    echo "  2. 创建 frpc 客户端"
+    echo "  3. 配置端口映射"
     echo
-    echo -e "${WHITE}📋 使用步骤:${NC}"
-    echo "  1. 在 serv00 上安装 frps 服务端"
-    echo "  2. 在内网机器上安装 frpc 客户端"
-    echo "  3. 配置客户端连接到服务端"
-    echo "  4. 通过服务端访问内网服务"
+    echo -e "${WHITE}注意事项:${NC}"
+    echo "  • 端口范围: 10000-65535"
+    echo "  • 遵守 serv00 使用条款"
     echo
-    echo -e "${WHITE}🔧 常用场景:${NC}"
-    echo "  • SSH 访问: 将内网 SSH (22端口) 映射到公网"
-    echo "  • Web 服务: 将内网 Web 服务映射到公网"
-    echo "  • 远程桌面: 将 RDP/VNC 映射到公网"
-    echo "  • 文件服务: 将 FTP/SMB 等服务映射到公网"
-    echo
-    echo -e "${WHITE}⚠️  serv00 注意事项:${NC}"
-    echo "  • 使用端口范围: 10000-65535"
-    echo "  • 注意资源限制: CPU、内存、带宽"
-    echo "  • 遵守使用条款: 不要用于违法用途"
-    echo
-    echo -e "${WHITE}🔗 相关链接:${NC}"
-    echo "  • 官方文档: https://gofrp.org/zh-cn/docs/"
-    echo "  • GitHub: https://github.com/fatedier/frp"
+    echo -e "${WHITE}官方文档: https://gofrp.org/zh-cn/docs/${NC}"
     echo
     read -p "按回车键返回..."
 }
 
-# 网络连接测试
-network_connectivity_test() {
-    echo -e "${BLUE}=== 🌐 网络连接测试 ===${NC}"
-    echo
-
-    # 测试基本网络连接
-    echo -e "${YELLOW}测试外网连接...${NC}"
-    if ping -c 3 8.8.8.8 >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ 外网连接正常${NC}"
-    else
-        echo -e "${RED}✗ 外网连接失败${NC}"
-    fi
-
-    # 测试 DNS 解析
-    echo -e "${YELLOW}测试 DNS 解析...${NC}"
-    if nslookup google.com >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ DNS 解析正常${NC}"
-    else
-        echo -e "${RED}✗ DNS 解析失败${NC}"
-    fi
-
-    # 测试 HTTP 连接
-    echo -e "${YELLOW}测试 HTTP 连接...${NC}"
-    if command -v curl >/dev/null 2>&1; then
-        if curl -s --connect-timeout 5 http://httpbin.org/ip >/dev/null; then
-            echo -e "${GREEN}✓ HTTP 连接正常${NC}"
-        else
-            echo -e "${RED}✗ HTTP 连接失败${NC}"
-        fi
-    else
-        echo -e "${YELLOW}⚠ curl 未安装，跳过 HTTP 测试${NC}"
-    fi
-
-    # 测试 HTTPS 连接
-    echo -e "${YELLOW}测试 HTTPS 连接...${NC}"
-    if command -v curl >/dev/null 2>&1; then
-        if curl -s --connect-timeout 5 https://httpbin.org/ip >/dev/null; then
-            echo -e "${GREEN}✓ HTTPS 连接正常${NC}"
-        else
-            echo -e "${RED}✗ HTTPS 连接失败${NC}"
-        fi
-    else
-        echo -e "${YELLOW}⚠ curl 未安装，跳过 HTTPS 测试${NC}"
-    fi
-
-    echo
-    read -p "按回车键继续..."
-}
-
-# 资源使用情况检查
-resource_usage_check() {
-    echo -e "${BLUE}=== 📊 资源使用情况 ===${NC}"
-    echo
-
-    # CPU 使用情况
-    echo -e "${WHITE}💻 CPU 使用情况:${NC}"
-    if command -v top >/dev/null 2>&1; then
-        top -n 1 | grep "CPU:" | head -1
-    else
-        echo "无法获取 CPU 信息"
-    fi
-    echo
-
-    # 内存使用情况
-    echo -e "${WHITE}🧠 内存使用情况:${NC}"
-    if command -v top >/dev/null 2>&1; then
-        top -n 1 | grep "Mem:" | head -1
-    else
-        echo "无法获取内存信息"
-    fi
+# 系统资源检查（合并版）
+system_resource_check() {
+    echo -e "${BLUE}=== 📊 系统资源检查 ===${NC}"
     echo
 
     # 磁盘使用情况
-    echo -e "${WHITE}💾 磁盘使用情况:${NC}"
-    df -h ~ | tail -1 | awk '{printf "主目录: %s 已用 / %s 总计 (%s 使用率)\n", $3, $2, $5}'
-    echo
+    echo -e "${WHITE}💾 磁盘使用:${NC}"
+    df -h ~ | tail -1 | awk '{printf "  %s 已用 / %s 总计 (%s 使用率)\n", $3, $2, $5}'
 
     # 用户进程数
     echo -e "${WHITE}⚙️  用户进程:${NC}"
     local process_count=$(ps aux | grep "^$(whoami)" | wc -l)
-    echo "当前用户进程数: $process_count"
-    echo
+    echo "  当前进程数: $process_count"
 
-    read -p "按回车键继续..."
-}
-
-# 服务进程检查
-service_process_check() {
-    echo -e "${BLUE}=== 🔧 服务进程检查 ===${NC}"
-    echo
-
-    echo -e "${WHITE}Screen 会话:${NC}"
+    # Screen 会话
+    echo -e "${WHITE}📺 Screen 会话:${NC}"
     if command -v screen >/dev/null 2>&1; then
-        screen -ls 2>/dev/null || echo "没有运行中的 screen 会话"
+        local session_count=$(screen -ls 2>/dev/null | grep -c "Detached\|Attached" || echo "0")
+        echo "  运行中会话: $session_count 个"
     else
-        echo "screen 未安装"
+        echo "  screen 未安装"
     fi
+
+    # 网络连接测试
+    echo -e "${WHITE}🌐 网络连接:${NC}"
+    if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓ 外网连接正常${NC}"
+    else
+        echo -e "  ${RED}✗ 外网连接失败${NC}"
+    fi
+
     echo
-
-    echo -e "${WHITE}用户进程 (前10个):${NC}"
-    echo -e "${YELLOW}PID\t%CPU\t%MEM\tCOMMAND${NC}"
-    ps aux | grep "^$(whoami)" | head -10 | awk '{printf "%s\t%s\t%s\t%s\n", $2, $3, $4, $11}'
-    echo
-
-    read -p "按回车键继续..."
-}
-
-# 磁盘空间检查
-disk_space_check() {
-    echo -e "${BLUE}=== 📁 磁盘空间检查 ===${NC}"
-    echo
-
-    echo -e "${WHITE}主目录空间:${NC}"
-    df -h ~ | tail -1 | awk '{printf "路径: %s\n大小: %s\n已用: %s\n可用: %s\n使用率: %s\n", $6, $2, $3, $4, $5}'
-    echo
-
-    echo -e "${WHITE}大文件检查 (>10MB):${NC}"
-    find ~ -type f -size +10M 2>/dev/null | head -10 | while read file; do
-        size=$(du -h "$file" 2>/dev/null | cut -f1)
-        echo "  $size  $file"
-    done
-    echo
-
-    echo -e "${WHITE}目录大小统计:${NC}"
-    du -sh ~/apps ~/bin ~/.serv00-tool 2>/dev/null | sort -hr
-    echo
-
     read -p "按回车键继续..."
 }
 
@@ -2135,154 +1874,59 @@ diagnose_frps_startup() {
 
     local frps_dir="$HOME/apps/frps"
 
-    # 1. 检查安装状态
-    echo -e "${YELLOW}1. 检查安装状态...${NC}"
     if [ ! -d "$frps_dir" ]; then
         echo -e "${RED}✗ frps 未安装${NC}"
         read -p "按回车键继续..."
         return
     fi
-    echo -e "${GREEN}✓ frps 目录存在: $frps_dir${NC}"
 
     cd "$frps_dir"
 
-    # 2. 检查文件完整性
-    echo -e "${YELLOW}2. 检查文件完整性...${NC}"
-    if [ ! -f "frps" ]; then
-        echo -e "${RED}✗ frps 可执行文件不存在${NC}"
-    else
-        echo -e "${GREEN}✓ frps 可执行文件存在${NC}"
-        if [ -x "frps" ]; then
-            echo -e "${GREEN}✓ frps 有执行权限${NC}"
-        else
-            echo -e "${YELLOW}⚠ frps 无执行权限，正在修复...${NC}"
-            chmod +x frps
-            echo -e "${GREEN}✓ 权限已修复${NC}"
-        fi
+    # 检查文件
+    echo -e "${YELLOW}检查文件...${NC}"
+    [ -f "frps" ] && echo -e "${GREEN}✓ frps 可执行文件存在${NC}" || echo -e "${RED}✗ frps 文件缺失${NC}"
+    [ -f "frps.toml" ] && echo -e "${GREEN}✓ 配置文件存在${NC}" || echo -e "${RED}✗ 配置文件缺失${NC}"
+
+    # 检查权限
+    if [ -f "frps" ] && [ ! -x "frps" ]; then
+        echo -e "${YELLOW}修复执行权限...${NC}"
+        chmod +x frps
     fi
 
-    if [ ! -f "frps.toml" ]; then
-        echo -e "${RED}✗ frps.toml 配置文件不存在${NC}"
-    else
-        echo -e "${GREEN}✓ frps.toml 配置文件存在${NC}"
-    fi
-
-    # 3. 检查配置文件语法
-    echo -e "${YELLOW}3. 检查配置文件语法...${NC}"
-    if [ -f "frps.toml" ] && [ -x "frps" ]; then
+    # 检查配置语法
+    echo -e "${YELLOW}检查配置语法...${NC}"
+    if [ -f "frps" ] && [ -f "frps.toml" ]; then
         if ./frps verify -c frps.toml >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ 配置文件语法正确${NC}"
+            echo -e "${GREEN}✓ 配置语法正确${NC}"
         else
-            echo -e "${RED}✗ 配置文件语法错误${NC}"
-            echo -e "${YELLOW}错误详情:${NC}"
-            local error_msg=$(./frps verify -c frps.toml 2>&1 | head -5)
+            echo -e "${RED}✗ 配置语法错误${NC}"
+            local error_msg=$(./frps verify -c frps.toml 2>&1 | head -3)
             echo "$error_msg"
-
-            # 检查常见错误并提供修复建议
             if echo "$error_msg" | grep -q "allowPorts"; then
-                echo -e "${CYAN}💡 检测到 allowPorts 配置错误${NC}"
-                echo -e "${WHITE}建议: 使用 'A. 🔄 修复配置' 功能自动修复${NC}"
+                echo -e "${CYAN}💡 建议使用 'A. 修复配置' 功能${NC}"
             fi
         fi
-    else
-        echo -e "${YELLOW}⚠ 跳过语法检查（文件缺失）${NC}"
     fi
 
-    # 4. 检查端口配置
-    echo -e "${YELLOW}4. 检查端口配置...${NC}"
+    # 检查端口
+    echo -e "${YELLOW}检查端口配置...${NC}"
     if [ -f "frps.toml" ]; then
         local bind_port=$(grep 'bindPort.*=' frps.toml | cut -d'=' -f2 | tr -d ' ')
-        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
-
         if [ -n "$bind_port" ]; then
             echo -e "${GREEN}✓ 监听端口: $bind_port${NC}"
             if [ "$bind_port" -ge 10000 ] && [ "$bind_port" -le 65535 ]; then
-                echo -e "${GREEN}✓ 端口在 serv00 允许范围内${NC}"
+                echo -e "${GREEN}✓ 端口在允许范围内${NC}"
             else
-                echo -e "${RED}✗ 端口不在 serv00 允许范围 (10000-65535)${NC}"
+                echo -e "${RED}✗ 端口超出范围 (10000-65535)${NC}"
             fi
-        else
-            echo -e "${RED}✗ 未找到监听端口配置${NC}"
-        fi
-
-        if [ -n "$web_port" ]; then
-            echo -e "${GREEN}✓ Dashboard 端口: $web_port${NC}"
-        else
-            echo -e "${RED}✗ 未找到 Dashboard 端口配置${NC}"
         fi
     fi
-
-    # 5. 检查端口占用
-    echo -e "${YELLOW}5. 检查端口占用...${NC}"
-    if [ -n "$bind_port" ] && command -v sockstat >/dev/null 2>&1; then
-        if sockstat -l | grep ":$bind_port " >/dev/null; then
-            echo -e "${RED}✗ 端口 $bind_port 已被占用${NC}"
-            sockstat -l | grep ":$bind_port "
-        else
-            echo -e "${GREEN}✓ 端口 $bind_port 未被占用${NC}"
-        fi
-    else
-        echo -e "${YELLOW}⚠ 无法检查端口占用${NC}"
-    fi
-
-    # 6. 测试临时目录启动
-    echo -e "${YELLOW}6. 测试临时目录启动...${NC}"
-    if [ -f "frps" ] && [ -f "frps.toml" ]; then
-        local test_dir="/tmp/frps_test_$(whoami)_$$"
-        mkdir -p "$test_dir"
-
-        cp frps "$test_dir/"
-        sed "s|to = \"./frps.log\"|to = \"$(pwd)/test.log\"|g" frps.toml > "$test_dir/frps.toml"
-
-        echo -e "${WHITE}测试目录: $test_dir${NC}"
-
-        # 尝试启动（5秒后自动停止）
-        cd "$test_dir"
-        timeout 5 ./frps -c frps.toml >/dev/null 2>&1 &
-        local test_pid=$!
-        sleep 2
-
-        if kill -0 $test_pid 2>/dev/null; then
-            echo -e "${GREEN}✓ 临时目录启动测试成功${NC}"
-            kill $test_pid 2>/dev/null
-        else
-            echo -e "${RED}✗ 临时目录启动测试失败${NC}"
-        fi
-
-        cd "$frps_dir"
-        rm -rf "$test_dir"
-    else
-        echo -e "${YELLOW}⚠ 跳过启动测试（文件缺失）${NC}"
-    fi
-
-    # 7. 检查系统资源
-    echo -e "${YELLOW}7. 检查系统资源...${NC}"
-
-    # 检查磁盘空间
-    local disk_usage=$(df ~ | tail -1 | awk '{print $5}' | sed 's/%//')
-    if [ "$disk_usage" -lt 90 ]; then
-        echo -e "${GREEN}✓ 磁盘空间充足 (${disk_usage}% 已用)${NC}"
-    else
-        echo -e "${RED}✗ 磁盘空间不足 (${disk_usage}% 已用)${NC}"
-    fi
-
-    # 检查进程数
-    local process_count=$(ps aux | grep "^$(whoami)" | wc -l)
-    echo -e "${GREEN}✓ 用户进程数: $process_count${NC}"
 
     echo
-    echo -e "${CYAN}=== 诊断总结 ===${NC}"
-    echo -e "${WHITE}如果所有检查都通过但仍无法启动，可能的原因：${NC}"
-    echo -e "1. serv00 系统限制或维护"
-    echo -e "2. 网络连接问题"
-    echo -e "3. 临时文件系统权限问题"
-    echo -e "4. 资源配额限制"
-    echo
-    echo -e "${WHITE}建议解决方案：${NC}"
-    echo -e "1. 检查 serv00 状态页面"
-    echo -e "2. 尝试重新安装 frps"
-    echo -e "3. 联系 serv00 技术支持"
-    echo -e "4. 查看完整日志: cat $frps_dir/frps.log"
+    echo -e "${WHITE}如果问题仍然存在:${NC}"
+    echo -e "1. 使用 'A. 修复配置' 功能"
+    echo -e "2. 查看日志: cat frps.log"
+    echo -e "3. 重新安装 frps"
     echo
 
     read -p "按回车键继续..."
@@ -2736,21 +2380,15 @@ system_diagnostic_menu() {
         echo -e "${PURPLE}=== 🔍 系统诊断 ===${NC}"
         echo "1. 🔐 检查 binexec 状态"
         echo "2. 🐳 检查容器支持"
-        echo "3. 🌐 网络连接测试"
-        echo "4. 📊 资源使用情况"
-        echo "5. 🔧 服务进程检查"
-        echo "6. 📁 磁盘空间检查"
+        echo "3. 📊 系统资源检查"
         echo "0. 🔙 返回主菜单"
         echo
-        read -p "请选择操作 [0-6]: " choice
+        read -p "请选择操作 [0-3]: " choice
 
         case $choice in
             1) clear; check_binexec; read -p "按回车键继续..." ;;
             2) clear; check_container_support; read -p "按回车键继续..." ;;
-            3) network_connectivity_test ;;
-            4) resource_usage_check ;;
-            5) service_process_check ;;
-            6) disk_space_check ;;
+            3) system_resource_check ;;
             0) break ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
