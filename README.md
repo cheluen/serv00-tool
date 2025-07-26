@@ -91,10 +91,13 @@ serv00-tool
 # 选择 "4. 应用管理" -> "8. 安装 frps 服务"
 
 # 2. 自动下载并配置 frps
-# 配置 Dashboard、认证 token 等
+# - 使用最新 TOML 配置格式
+# - 配置 Dashboard、认证 token 等
+# - 自动设置开机自启动
 
 # 3. 启动 frps 服务
 # 选择 "3. 启动应用" -> 输入 "frps"
+# 或使用专门的 frps 管理菜单
 ```
 
 ### 创建 frp 客户端
@@ -103,9 +106,22 @@ serv00-tool
 # 选择 "4. 应用管理" -> "1. 创建新应用" -> "4. frp 客户端"
 
 # 2. 配置连接信息
-# 服务器地址、端口、token、本地服务等
+# - 使用最新 TOML 配置格式
+# - 服务器地址、端口、token、本地服务等
 
 # 3. 启动客户端连接
+```
+
+### frps 专门管理
+```bash
+# 进入 frps 管理菜单
+./serv00-tool.sh
+# 选择 "4. 应用管理" -> "9. frps 管理"
+
+# 功能包括：
+# - 查看状态、启动/停止/重启服务
+# - 查看日志、编辑配置文件
+# - 测试开机自启、卸载服务
 ```
 
 ### 管理应用生命周期
@@ -174,17 +190,35 @@ exit
 ```
 
 ### Q: frps 能在 serv00 上运行吗？
-**可以！** 工具提供一键安装 frps 功能：
-- ✅ 自动下载适配 FreeBSD 的 frp 版本
-- ✅ 自动配置服务端参数
-- ✅ 支持 Dashboard 管理界面
+**可以！** 工具提供完整的 frps 支持：
+- ✅ 自动下载适配 FreeBSD 的 frp 最新版本
+- ✅ 使用最新 TOML 配置格式（不再使用 INI）
+- ✅ 自动配置开机自启动（crontab + screen）
+- ✅ 专门的 frps 管理界面
+- ✅ 支持 Dashboard 和 Prometheus 监控
 - ⚠️ 注意端口限制，使用 serv00 允许的端口范围
 
-### Q: frps 有什么限制？
-- **端口限制**：只能使用 serv00 允许的端口
-- **资源限制**：受 CPU 和内存限制
-- **连接数限制**：建议设置合理的最大连接数
-- **持久运行**：需要在 screen 会话中运行
+### Q: frps 配置文件在哪里？
+安装完成后会显示配置文件位置：
+- **TOML 配置**: `~/apps/frps/frps.toml`
+- **启动脚本**: `~/apps/frps/start.sh`
+- **自启脚本**: `~/apps/frps/autostart.sh`
+- **日志文件**: `~/apps/frps/frps.log`
+
+### Q: 如何修改 frps 配置？
+```bash
+# 方法1: 使用工具内置编辑器
+./serv00-tool.sh
+# 应用管理 -> frps 管理 -> 编辑配置文件
+
+# 方法2: 直接编辑
+nano ~/apps/frps/frps.toml
+```
+
+### Q: frps 开机自启动如何工作？
+- ✅ 自动添加 crontab 任务：`@reboot ~/apps/frps/autostart.sh`
+- ✅ 使用 screen 会话保持后台运行
+- ✅ 可以通过 frps 管理菜单测试自启功能
 
 ## ⚠️ 重要说明
 

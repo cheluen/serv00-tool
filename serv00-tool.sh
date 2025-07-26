@@ -398,9 +398,10 @@ app_management_menu() {
         echo "6. 删除应用"
         echo "7. 应用日志"
         echo "8. 安装 frps 服务"
-        echo "9. 返回主菜单"
+        echo "9. frps 管理"
+        echo "0. 返回主菜单"
         echo
-        read -p "请选择操作 [1-9]: " choice
+        read -p "请选择操作 [0-9]: " choice
 
         case $choice in
             1) create_new_app ;;
@@ -411,7 +412,8 @@ app_management_menu() {
             6) delete_app ;;
             7) show_app_logs ;;
             8) install_frps ;;
-            9) break ;;
+            9) frps_management_menu ;;
+            0) break ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
     done
@@ -677,7 +679,7 @@ create_frpc_app() {
 
 # 配置 frpc
 setup_frpc_config() {
-    echo -e "${YELLOW}配置 frp 客户端...${NC}"
+    echo -e "${YELLOW}配置 frp 客户端 (使用最新 TOML 格式)...${NC}"
 
     # 获取用户输入
     read -p "请输入 frps 服务器地址: " server_addr
@@ -707,23 +709,38 @@ setup_frpc_config() {
         return
     fi
 
-    # 创建配置文件
-    cat > frpc.ini << EOF
-[common]
-server_addr = $server_addr
-server_port = $server_port
-token = $auth_token
+    # 创建 TOML 配置文件
+    cat > frpc.toml << EOF
+# frpc 客户端配置文件 (TOML 格式)
+# 配置文档: https://gofrp.org/zh-cn/docs/reference/client-configures/
+
+# 服务器配置
+serverAddr = "$server_addr"
+serverPort = $server_port
+
+# 认证配置
+[auth]
+method = "token"
+token = "$auth_token"
 
 # 日志配置
-log_file = ./frpc.log
-log_level = info
-log_max_days = 3
+[log]
+to = "./frpc.log"
+level = "info"
+maxDays = 3
 
-[$service_name]
-type = tcp
-local_ip = 127.0.0.1
-local_port = $local_port
-remote_port = $remote_port
+# 传输配置
+[transport]
+poolCount = 1
+tcpKeepalive = 7200
+
+# 代理配置
+[[proxies]]
+name = "$service_name"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = $local_port
+remotePort = $remote_port
 EOF
 
     # 创建启动脚本
@@ -731,10 +748,10 @@ EOF
 #!/bin/bash
 cd "$(dirname "$0")"
 echo "启动 frp 客户端..."
-echo "配置文件: $(pwd)/frpc.ini"
+echo "配置文件: $(pwd)/frpc.toml"
 echo "日志文件: $(pwd)/frpc.log"
 echo "----------------------------------------"
-./frpc -c frpc.ini
+./frpc -c frpc.toml
 EOF
 
     chmod +x start.sh
@@ -746,6 +763,10 @@ EOF
     echo -e "  本地服务: $service_name (127.0.0.1:$local_port)"
     echo -e "  远程端口: $remote_port"
     echo -e "  Token: $auth_token"
+    echo
+    echo -e "${CYAN}📁 配置文件位置:${NC}"
+    echo -e "  TOML 配置: ${WHITE}$(pwd)/frpc.toml${NC}"
+    echo -e "  启动脚本: ${WHITE}$(pwd)/start.sh${NC}"
     echo
 }
 
@@ -1173,7 +1194,7 @@ install_frps() {
 
 # 配置 frps
 setup_frps_config() {
-    echo -e "${YELLOW}配置 frps...${NC}"
+    echo -e "${YELLOW}配置 frps (使用最新 TOML 格式)...${NC}"
 
     # 获取用户输入
     read -p "请输入 frps 监听端口 (默认 7000): " bind_port
@@ -1193,31 +1214,46 @@ setup_frps_config() {
         auth_token=$(openssl rand -hex 16 2>/dev/null || echo "serv00-$(date +%s)")
     fi
 
-    # 创建配置文件
-    cat > frps.ini << EOF
-[common]
-# frps 监听端口
-bind_port = $bind_port
+    # 创建 TOML 配置文件
+    cat > frps.toml << EOF
+# frps 服务端配置文件 (TOML 格式)
+# 配置文档: https://gofrp.org/zh-cn/docs/reference/server-configures/
 
-# dashboard 配置
-dashboard_port = $dashboard_port
-dashboard_user = $dashboard_user
-dashboard_pwd = $dashboard_pwd
+# 基本配置
+bindAddr = "0.0.0.0"
+bindPort = $bind_port
+
+# Web 管理界面配置
+[webServer]
+addr = "0.0.0.0"
+port = $dashboard_port
+user = "$dashboard_user"
+password = "$dashboard_pwd"
 
 # 认证配置
-token = $auth_token
+[auth]
+method = "token"
+token = "$auth_token"
 
 # 日志配置
-log_file = ./frps.log
-log_level = info
-log_max_days = 3
+[log]
+to = "./frps.log"
+level = "info"
+maxDays = 3
 
-# 其他配置
-max_clients = 10
-max_ports_per_client = 5
+# 传输配置
+[transport]
+maxPoolCount = 5
+tcpKeepalive = 7200
 
-# 允许的端口范围（根据 serv00 限制调整）
-allow_ports = 10000-65535
+# 限制配置
+maxPortsPerClient = 5
+allowPorts = [
+  { start = 10000, end = 65535 }
+]
+
+# 启用 Prometheus 监控 (可选)
+enablePrometheus = true
 EOF
 
     # 创建启动脚本
@@ -1225,15 +1261,19 @@ EOF
 #!/bin/bash
 cd "$(dirname "$0")"
 echo "启动 frps 服务..."
-echo "配置文件: $(pwd)/frps.ini"
+echo "配置文件: $(pwd)/frps.toml"
 echo "日志文件: $(pwd)/frps.log"
 echo "Dashboard: http://$(hostname):7500"
-echo "认证 token: $(grep '^token' frps.ini | cut -d'=' -f2 | tr -d ' ')"
+echo "认证 token: $(grep '^token' frps.toml | cut -d'"' -f2)"
+echo "Prometheus: http://$(hostname):7500/metrics"
 echo "----------------------------------------"
-./frps -c frps.ini
+./frps -c frps.toml
 EOF
 
     chmod +x start.sh
+
+    # 创建开机自启动脚本
+    create_autostart_script
 
     echo -e "${GREEN}✓ frps 配置完成${NC}"
     echo
@@ -1244,11 +1284,477 @@ EOF
     echo -e "  密码: $dashboard_pwd"
     echo -e "  Token: $auth_token"
     echo
+    echo -e "${CYAN}📁 配置文件位置:${NC}"
+    echo -e "  TOML 配置: ${WHITE}$(pwd)/frps.toml${NC}"
+    echo -e "  启动脚本: ${WHITE}$(pwd)/start.sh${NC}"
+    echo -e "  自启脚本: ${WHITE}$(pwd)/autostart.sh${NC}"
+    echo
     echo -e "${YELLOW}重要提醒:${NC}"
     echo -e "  1. 请确保端口 $bind_port 和 $dashboard_port 在 serv00 允许范围内"
     echo -e "  2. 记住 token，客户端连接时需要使用"
     echo -e "  3. 可以通过 Dashboard 监控连接状态"
+    echo -e "  4. 已配置开机自启动，重启后会自动运行"
     echo
+}
+
+# 创建开机自启动脚本
+create_autostart_script() {
+    echo -e "${YELLOW}配置开机自启动...${NC}"
+
+    # 创建自启动脚本
+    cat > autostart.sh << 'EOF'
+#!/bin/bash
+# frps 开机自启动脚本
+
+FRPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRPS_NAME="frps"
+SCREEN_NAME="frps-autostart"
+
+cd "$FRPS_DIR"
+
+# 检查 frps 是否已在运行
+if screen -list | grep -q "$SCREEN_NAME"; then
+    echo "frps 已在运行中 (screen: $SCREEN_NAME)"
+    exit 0
+fi
+
+# 检查 frps 文件是否存在
+if [ ! -f "./frps" ]; then
+    echo "错误: frps 可执行文件不存在"
+    exit 1
+fi
+
+# 检查配置文件是否存在
+if [ ! -f "./frps.toml" ]; then
+    echo "错误: frps.toml 配置文件不存在"
+    exit 1
+fi
+
+# 启动 frps
+echo "启动 frps 服务..."
+screen -dmS "$SCREEN_NAME" bash -c "cd '$FRPS_DIR' && ./frps -c frps.toml"
+
+# 等待一下检查是否启动成功
+sleep 2
+if screen -list | grep -q "$SCREEN_NAME"; then
+    echo "✓ frps 启动成功 (screen: $SCREEN_NAME)"
+    echo "Dashboard: http://$(hostname):$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')"
+else
+    echo "✗ frps 启动失败"
+    exit 1
+fi
+EOF
+
+    chmod +x autostart.sh
+
+    # 添加到用户的 crontab 中实现开机自启
+    setup_crontab_autostart
+
+    echo -e "${GREEN}✓ 开机自启动配置完成${NC}"
+}
+
+# 设置 crontab 开机自启动
+setup_crontab_autostart() {
+    local frps_dir="$(pwd)"
+    local autostart_script="$frps_dir/autostart.sh"
+
+    # 检查 crontab 是否已存在该任务
+    if crontab -l 2>/dev/null | grep -q "$autostart_script"; then
+        echo -e "${YELLOW}crontab 自启动任务已存在${NC}"
+        return
+    fi
+
+    # 添加到 crontab
+    echo -e "${YELLOW}添加 crontab 自启动任务...${NC}"
+
+    # 获取现有的 crontab
+    local temp_cron=$(mktemp)
+    crontab -l 2>/dev/null > "$temp_cron" || true
+
+    # 添加新的任务
+    echo "# frps 开机自启动" >> "$temp_cron"
+    echo "@reboot $autostart_script" >> "$temp_cron"
+
+    # 安装新的 crontab
+    if crontab "$temp_cron" 2>/dev/null; then
+        echo -e "${GREEN}✓ crontab 自启动任务添加成功${NC}"
+    else
+        echo -e "${YELLOW}⚠ crontab 添加失败，请手动添加以下行到 crontab:${NC}"
+        echo -e "${WHITE}@reboot $autostart_script${NC}"
+    fi
+
+    rm -f "$temp_cron"
+}
+
+# frps 管理菜单
+frps_management_menu() {
+    while true; do
+        clear
+        show_banner
+        echo -e "${PURPLE}=== frps 服务管理 ===${NC}"
+        echo "1. 查看 frps 状态"
+        echo "2. 启动 frps 服务"
+        echo "3. 停止 frps 服务"
+        echo "4. 重启 frps 服务"
+        echo "5. 查看 frps 日志"
+        echo "6. 编辑配置文件"
+        echo "7. 查看配置信息"
+        echo "8. 测试开机自启"
+        echo "9. 卸载 frps"
+        echo "0. 返回上级菜单"
+        echo
+        read -p "请选择操作 [0-9]: " choice
+
+        case $choice in
+            1) check_frps_status ;;
+            2) start_frps_service ;;
+            3) stop_frps_service ;;
+            4) restart_frps_service ;;
+            5) show_frps_logs ;;
+            6) edit_frps_config ;;
+            7) show_frps_config_info ;;
+            8) test_frps_autostart ;;
+            9) uninstall_frps ;;
+            0) break ;;
+            *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
+        esac
+    done
+}
+
+# 查看 frps 状态
+check_frps_status() {
+    echo -e "${BLUE}=== frps 服务状态 ===${NC}"
+
+    local frps_dir="$HOME/apps/frps"
+    if [ ! -d "$frps_dir" ]; then
+        echo -e "${RED}✗ frps 未安装${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${WHITE}安装状态:${NC} ${GREEN}已安装${NC}"
+    echo -e "${WHITE}安装目录:${NC} $frps_dir"
+
+    # 检查进程状态
+    if screen -list | grep -q "frps"; then
+        echo -e "${WHITE}运行状态:${NC} ${GREEN}运行中${NC}"
+        echo -e "${WHITE}Screen 会话:${NC} $(screen -list | grep frps | awk '{print $1}')"
+    else
+        echo -e "${WHITE}运行状态:${NC} ${RED}已停止${NC}"
+    fi
+
+    # 检查配置文件
+    if [ -f "$frps_dir/frps.toml" ]; then
+        echo -e "${WHITE}配置文件:${NC} ${GREEN}存在${NC}"
+        local bind_port=$(grep 'bindPort.*=' "$frps_dir/frps.toml" | cut -d'=' -f2 | tr -d ' ')
+        local web_port=$(grep 'port.*=' "$frps_dir/frps.toml" | head -1 | cut -d'=' -f2 | tr -d ' ')
+        echo -e "${WHITE}监听端口:${NC} $bind_port"
+        echo -e "${WHITE}Dashboard:${NC} http://$(hostname):$web_port"
+    else
+        echo -e "${WHITE}配置文件:${NC} ${RED}缺失${NC}"
+    fi
+
+    # 检查自启动
+    if crontab -l 2>/dev/null | grep -q "frps"; then
+        echo -e "${WHITE}开机自启:${NC} ${GREEN}已启用${NC}"
+    else
+        echo -e "${WHITE}开机自启:${NC} ${YELLOW}未启用${NC}"
+    fi
+
+    echo
+    read -p "按回车键继续..."
+}
+
+# 启动 frps 服务
+start_frps_service() {
+    echo -e "${BLUE}=== 启动 frps 服务 ===${NC}"
+
+    local frps_dir="$HOME/apps/frps"
+    if [ ! -d "$frps_dir" ] || [ ! -f "$frps_dir/frps" ]; then
+        echo -e "${RED}✗ frps 未安装${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    if screen -list | grep -q "frps"; then
+        echo -e "${YELLOW}frps 已在运行中${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    cd "$frps_dir"
+    echo -e "${YELLOW}启动 frps 服务...${NC}"
+    screen -dmS "frps" bash -c "cd '$frps_dir' && ./frps -c frps.toml"
+
+    sleep 2
+    if screen -list | grep -q "frps"; then
+        echo -e "${GREEN}✓ frps 启动成功${NC}"
+        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
+        echo -e "${WHITE}Dashboard: http://$(hostname):$web_port${NC}"
+    else
+        echo -e "${RED}✗ frps 启动失败${NC}"
+    fi
+
+    read -p "按回车键继续..."
+}
+
+# 停止 frps 服务
+stop_frps_service() {
+    echo -e "${BLUE}=== 停止 frps 服务 ===${NC}"
+
+    if screen -list | grep -q "frps"; then
+        echo -e "${YELLOW}停止 frps 服务...${NC}"
+        screen -S "frps" -X quit
+        sleep 1
+
+        if ! screen -list | grep -q "frps"; then
+            echo -e "${GREEN}✓ frps 已停止${NC}"
+        else
+            echo -e "${RED}✗ frps 停止失败${NC}"
+        fi
+    else
+        echo -e "${YELLOW}frps 未在运行${NC}"
+    fi
+
+    read -p "按回车键继续..."
+}
+
+# 重启 frps 服务
+restart_frps_service() {
+    echo -e "${BLUE}=== 重启 frps 服务 ===${NC}"
+
+    # 先停止
+    if screen -list | grep -q "frps"; then
+        echo -e "${YELLOW}停止 frps 服务...${NC}"
+        screen -S "frps" -X quit
+        sleep 2
+    fi
+
+    # 再启动
+    local frps_dir="$HOME/apps/frps"
+    if [ -d "$frps_dir" ] && [ -f "$frps_dir/frps" ]; then
+        cd "$frps_dir"
+        echo -e "${YELLOW}启动 frps 服务...${NC}"
+        screen -dmS "frps" bash -c "cd '$frps_dir' && ./frps -c frps.toml"
+
+        sleep 2
+        if screen -list | grep -q "frps"; then
+            echo -e "${GREEN}✓ frps 重启成功${NC}"
+            local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
+            echo -e "${WHITE}Dashboard: http://$(hostname):$web_port${NC}"
+        else
+            echo -e "${RED}✗ frps 重启失败${NC}"
+        fi
+    else
+        echo -e "${RED}✗ frps 未安装${NC}"
+    fi
+
+    read -p "按回车键继续..."
+}
+
+# 查看 frps 日志
+show_frps_logs() {
+    echo -e "${BLUE}=== frps 服务日志 ===${NC}"
+
+    local frps_dir="$HOME/apps/frps"
+    local log_file="$frps_dir/frps.log"
+
+    if [ ! -f "$log_file" ]; then
+        echo -e "${YELLOW}日志文件不存在: $log_file${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${WHITE}日志文件: $log_file${NC}"
+    echo -e "${WHITE}最近 50 行日志:${NC}"
+    echo "----------------------------------------"
+    tail -50 "$log_file"
+    echo "----------------------------------------"
+
+    read -p "按回车键继续..."
+}
+
+# 编辑配置文件
+edit_frps_config() {
+    echo -e "${BLUE}=== 编辑 frps 配置文件 ===${NC}"
+
+    local frps_dir="$HOME/apps/frps"
+    local config_file="$frps_dir/frps.toml"
+
+    if [ ! -f "$config_file" ]; then
+        echo -e "${RED}✗ 配置文件不存在: $config_file${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${WHITE}配置文件位置: $config_file${NC}"
+    echo -e "${YELLOW}选择编辑器:${NC}"
+    echo "1. nano (推荐)"
+    echo "2. vi"
+    echo "3. vim"
+    echo "4. 显示配置内容"
+    echo "5. 返回"
+
+    read -p "请选择 [1-5]: " editor_choice
+
+    case $editor_choice in
+        1)
+            if command -v nano >/dev/null 2>&1; then
+                nano "$config_file"
+            else
+                echo -e "${RED}nano 未安装${NC}"
+            fi
+            ;;
+        2)
+            vi "$config_file"
+            ;;
+        3)
+            if command -v vim >/dev/null 2>&1; then
+                vim "$config_file"
+            else
+                echo -e "${RED}vim 未安装${NC}"
+            fi
+            ;;
+        4)
+            echo -e "${WHITE}配置文件内容:${NC}"
+            echo "----------------------------------------"
+            cat "$config_file"
+            echo "----------------------------------------"
+            ;;
+        5)
+            return
+            ;;
+        *)
+            echo -e "${RED}无效选择${NC}"
+            ;;
+    esac
+
+    read -p "按回车键继续..."
+}
+
+# 查看配置信息
+show_frps_config_info() {
+    echo -e "${BLUE}=== frps 配置信息 ===${NC}"
+
+    local frps_dir="$HOME/apps/frps"
+    local config_file="$frps_dir/frps.toml"
+
+    if [ ! -f "$config_file" ]; then
+        echo -e "${RED}✗ 配置文件不存在${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    cd "$frps_dir"
+
+    echo -e "${WHITE}配置文件位置:${NC} $config_file"
+    echo
+
+    # 解析配置信息
+    local bind_port=$(grep 'bindPort.*=' frps.toml | cut -d'=' -f2 | tr -d ' ')
+    local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
+    local web_user=$(grep 'user.*=' frps.toml | cut -d'"' -f2)
+    local web_pass=$(grep 'password.*=' frps.toml | cut -d'"' -f2)
+    local token=$(grep 'token.*=' frps.toml | cut -d'"' -f2)
+
+    echo -e "${WHITE}服务配置:${NC}"
+    echo -e "  监听端口: $bind_port"
+    echo -e "  Dashboard: http://$(hostname):$web_port"
+    echo -e "  管理员: $web_user"
+    echo -e "  密码: $web_pass"
+    echo -e "  认证 Token: $token"
+    echo
+
+    echo -e "${WHITE}文件信息:${NC}"
+    echo -e "  配置文件: $(ls -la frps.toml 2>/dev/null | awk '{print $5, $6, $7, $8}')"
+    echo -e "  日志文件: $(ls -la frps.log 2>/dev/null | awk '{print $5, $6, $7, $8}' || echo '不存在')"
+    echo -e "  启动脚本: $(ls -la start.sh 2>/dev/null | awk '{print $5, $6, $7, $8}')"
+    echo -e "  自启脚本: $(ls -la autostart.sh 2>/dev/null | awk '{print $5, $6, $7, $8}')"
+    echo
+
+    echo -e "${CYAN}📋 客户端连接配置:${NC}"
+    echo -e "${WHITE}服务器地址:${NC} $(hostname)"
+    echo -e "${WHITE}服务器端口:${NC} $bind_port"
+    echo -e "${WHITE}认证 Token:${NC} $token"
+    echo
+
+    read -p "按回车键继续..."
+}
+
+# 测试开机自启
+test_frps_autostart() {
+    echo -e "${BLUE}=== 测试 frps 开机自启 ===${NC}"
+
+    local frps_dir="$HOME/apps/frps"
+    local autostart_script="$frps_dir/autostart.sh"
+
+    if [ ! -f "$autostart_script" ]; then
+        echo -e "${RED}✗ 自启动脚本不存在${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${YELLOW}执行自启动脚本测试...${NC}"
+    echo -e "${WHITE}脚本位置: $autostart_script${NC}"
+    echo
+
+    # 先停止现有服务
+    if screen -list | grep -q "frps"; then
+        echo -e "${YELLOW}停止现有 frps 服务...${NC}"
+        screen -S "frps" -X quit
+        sleep 2
+    fi
+
+    # 执行自启动脚本
+    bash "$autostart_script"
+
+    echo
+    read -p "按回车键继续..."
+}
+
+# 卸载 frps
+uninstall_frps() {
+    echo -e "${BLUE}=== 卸载 frps 服务 ===${NC}"
+
+    local frps_dir="$HOME/apps/frps"
+
+    if [ ! -d "$frps_dir" ]; then
+        echo -e "${YELLOW}frps 未安装${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${RED}警告: 此操作将完全删除 frps 及其配置文件${NC}"
+    read -p "确认卸载 frps? (y/N): " confirm
+
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}操作已取消${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 停止服务
+    if screen -list | grep -q "frps"; then
+        echo -e "${YELLOW}停止 frps 服务...${NC}"
+        screen -S "frps" -X quit
+        sleep 2
+    fi
+
+    # 删除 crontab 任务
+    if crontab -l 2>/dev/null | grep -q "frps"; then
+        echo -e "${YELLOW}删除 crontab 自启动任务...${NC}"
+        local temp_cron=$(mktemp)
+        crontab -l 2>/dev/null | grep -v "frps" > "$temp_cron"
+        crontab "$temp_cron" 2>/dev/null || true
+        rm -f "$temp_cron"
+    fi
+
+    # 删除文件
+    echo -e "${YELLOW}删除 frps 文件...${NC}"
+    rm -rf "$frps_dir"
+
+    echo -e "${GREEN}✓ frps 卸载完成${NC}"
+    read -p "按回车键继续..."
 }
 
 # 配置管理菜单
