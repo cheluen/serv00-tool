@@ -84,6 +84,16 @@ devil binexec on
 ./serv00-tool.sh
 ```
 
+### 5. 故障排除（如果遇到问题）
+
+如果遇到 binexec 相关问题，可以使用独立检查脚本：
+
+```bash
+./check-binexec.sh
+```
+
+这个脚本会详细检查 binexec 状态并提供解决方案。
+
 ## 界面预览
 
 ```
@@ -121,7 +131,10 @@ devil binexec on
 ```
 serv00-tool/
 ├── serv00-tool.sh          # 主脚本文件
+├── install.sh              # 自动安装脚本
+├── check-binexec.sh        # Binexec 状态检查脚本
 ├── README.md               # 说明文档
+├── QUICKSTART.md           # 快速开始指南
 └── ~/.serv00-tool/         # 配置目录（运行后自动创建）
     ├── config              # 配置文件
     └── tool.log           # 日志文件
@@ -130,7 +143,13 @@ serv00-tool/
 ## 常见问题
 
 ### Q: 提示 "Binexec 未启用" 怎么办？
-A: 运行 `devil binexec on` 命令，然后重新登录 SSH。
+A:
+1. 运行 `devil binexec on` 命令
+2. **重新登录 SSH**（这一步很重要！）
+3. 如果仍有问题，使用独立检查脚本：`./check-binexec.sh`
+
+### Q: Screen 显示 "No Sockets found" 是什么意思？
+A: 这是正常的，表示当前没有运行中的 screen 会话。使用工具创建新会话即可。
 
 ### Q: 无法安装某些软件包？
 A: 某些软件包可能在 serv00 环境中不可用，或需要特殊权限。
@@ -140,6 +159,12 @@ A: 确保已安装 screen：在工具中选择 "工具安装" -> "安装 screen"
 
 ### Q: 配置更改不生效？
 A: 运行 `source ~/.bash_profile` 或重新登录 SSH。
+
+### Q: Binexec 检查结果不一致？
+A:
+1. 使用 `./check-binexec.sh` 进行详细检查
+2. 确保已重新登录 SSH
+3. 等待几分钟让更改生效
 
 ## 注意事项
 

@@ -44,25 +44,68 @@ show_banner() {
 # 检查 binexec 状态
 check_binexec() {
     echo -e "${YELLOW}检查 binexec 状态...${NC}"
-    
-    # 尝试运行一个简单的自定义命令来测试 binexec
-    if echo '#!/usr/local/bin/bash\necho "test"' > /tmp/test_binexec.sh && chmod +x /tmp/test_binexec.sh; then
-        if /tmp/test_binexec.sh >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ Binexec 已启用${NC}"
-            rm -f /tmp/test_binexec.sh
+
+    # 方法1: 使用 devil 命令检查状态
+    if command -v devil >/dev/null 2>&1; then
+        local devil_output
+        devil_output=$(devil binexec 2>/dev/null || echo "")
+
+        if echo "$devil_output" | grep -qi "enabled\|on\|active"; then
+            echo -e "${GREEN}✓ Binexec 已启用 (通过 devil 命令确认)${NC}"
+            return 0
+        elif echo "$devil_output" | grep -qi "disabled\|off\|inactive"; then
+            echo -e "${RED}✗ Binexec 未启用 (通过 devil 命令确认)${NC}"
+            show_binexec_help
+            return 1
+        fi
+    fi
+
+    # 方法2: 创建测试脚本验证
+    echo -e "${YELLOW}使用测试脚本验证 binexec 状态...${NC}"
+    local test_script="/tmp/test_binexec_$$"
+
+    # 写入测试脚本内容
+    cat > "$test_script" << 'EOF'
+#!/usr/local/bin/bash
+echo "binexec_test_success"
+EOF
+
+    # 设置执行权限
+    if chmod +x "$test_script" 2>/dev/null; then
+        # 尝试执行测试脚本
+        if "$test_script" 2>/dev/null | grep -q "binexec_test_success"; then
+            echo -e "${GREEN}✓ Binexec 已启用 (通过测试脚本确认)${NC}"
+            rm -f "$test_script"
             return 0
         else
-            echo -e "${RED}✗ Binexec 未启用${NC}"
-            echo -e "${YELLOW}请运行以下命令启用 binexec:${NC}"
-            echo -e "${WHITE}devil binexec on${NC}"
-            echo -e "${YELLOW}然后重新登录 SSH${NC}"
-            rm -f /tmp/test_binexec.sh
+            echo -e "${RED}✗ Binexec 未启用 (测试脚本执行失败)${NC}"
+            show_binexec_help
+            rm -f "$test_script"
             return 1
         fi
     else
-        echo -e "${RED}✗ 无法检查 binexec 状态${NC}"
+        echo -e "${RED}✗ 无法创建测试脚本${NC}"
+        rm -f "$test_script"
         return 1
     fi
+}
+
+# 显示 binexec 启用帮助
+show_binexec_help() {
+    echo
+    echo -e "${YELLOW}如何启用 Binexec:${NC}"
+    echo
+    echo -e "${WHITE}方法1: 使用命令行${NC}"
+    echo -e "  ${CYAN}devil binexec on${NC}"
+    echo -e "  ${YELLOW}然后重新登录 SSH${NC}"
+    echo
+    echo -e "${WHITE}方法2: 使用 Web 面板${NC}"
+    echo -e "  1. 登录 ${CYAN}https://panel.serv00.com${NC}"
+    echo -e "  2. 进入 ${CYAN}Additional services${NC}"
+    echo -e "  3. 点击 ${CYAN}Run your own applications${NC}"
+    echo -e "  4. 启用 ${CYAN}Binexec${NC} 开关"
+    echo -e "  5. 重新登录 SSH"
+    echo
 }
 
 # 显示系统信息
@@ -232,9 +275,18 @@ list_screen_sessions() {
     echo -e "${BLUE}=== Screen 会话列表 ===${NC}"
 
     if command -v screen >/dev/null 2>&1; then
-        screen -ls
+        local sessions_output
+        sessions_output=$(screen -ls 2>&1)
+
+        if echo "$sessions_output" | grep -q "No Sockets found"; then
+            echo -e "${YELLOW}当前没有运行中的 screen 会话${NC}"
+            echo -e "${WHITE}提示: 使用 '启动 screen 会话' 创建新会话${NC}"
+        else
+            echo "$sessions_output"
+        fi
     else
         echo -e "${RED}✗ screen 未安装${NC}"
+        echo -e "${YELLOW}请先安装 screen: 主菜单 -> 工具安装 -> 安装 screen${NC}"
     fi
 
     echo
@@ -245,15 +297,32 @@ list_screen_sessions() {
 attach_screen_session() {
     if command -v screen >/dev/null 2>&1; then
         echo -e "${BLUE}=== 可用的 Screen 会话 ===${NC}"
-        screen -ls
+
+        local sessions_output
+        sessions_output=$(screen -ls 2>&1)
+
+        if echo "$sessions_output" | grep -q "No Sockets found"; then
+            echo -e "${YELLOW}当前没有运行中的 screen 会话${NC}"
+            echo -e "${WHITE}请先创建一个 screen 会话${NC}"
+            echo
+            read -p "按回车键继续..."
+            return
+        fi
+
+        echo "$sessions_output"
         echo
-        read -p "请输入要连接的会话名称或ID: " session_id
+        read -p "请输入要连接的会话名称或ID (留空取消): " session_id
 
         if [ -n "$session_id" ]; then
+            echo -e "${YELLOW}正在连接到会话 $session_id...${NC}"
             screen -r "$session_id"
+        else
+            echo -e "${YELLOW}操作已取消${NC}"
+            read -p "按回车键继续..."
         fi
     else
         echo -e "${RED}✗ screen 未安装${NC}"
+        echo -e "${YELLOW}请先安装 screen: 主菜单 -> 工具安装 -> 安装 screen${NC}"
         read -p "按回车键继续..."
     fi
 }
