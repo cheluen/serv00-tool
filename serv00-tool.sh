@@ -135,10 +135,10 @@ show_system_info() {
 show_processes() {
     echo -e "${BLUE}=== 用户进程 ===${NC}"
     echo -e "${WHITE}PID\t%CPU\t%MEM\tCOMMAND${NC}"
-    ps aux | grep "^$(whoami)" | head -10 | awk '{printf "%s\t%s\t%s\t%s\n", $2, $3, $4, $11}'
+    ps -u "$(whoami)" -o pid,%cpu,%mem,comm | head -10 | tail -n +2
     echo
-    
-    echo -e "${YELLOW}显示前10个进程，使用 'ps aux | grep \$(whoami)' 查看全部${NC}"
+
+    echo -e "${YELLOW}显示前10个进程${NC}"
     echo
 }
 
@@ -331,7 +331,7 @@ attach_screen_session() {
 kill_process_interactive() {
     echo -e "${BLUE}=== 用户进程列表 ===${NC}"
     echo -e "${WHITE}PID\tCPU\tMEM\tCOMMAND${NC}"
-    ps aux | grep "^$(whoami)" | awk '{printf "%s\t%s\t%s\t%s\n", $2, $3, $4, $11}' | head -20
+    ps -u "$(whoami)" -o pid,%cpu,%mem,comm | head -20 | tail -n +2
     echo
 
     read -p "请输入要终止的进程 PID (留空取消): " pid
@@ -370,7 +370,7 @@ show_port_usage() {
     # FreeBSD 使用 sockstat 命令
     if command -v sockstat >/dev/null 2>&1; then
         echo -e "${WHITE}用户进程监听的端口:${NC}"
-        sockstat -l | grep "$(whoami)" | head -10
+        sockstat -l -u "$(whoami)" | head -10
     else
         echo -e "${YELLOW}sockstat 命令不可用，尝试使用 netstat${NC}"
         if command -v netstat >/dev/null 2>&1; then
@@ -1782,8 +1782,8 @@ system_resource_check() {
 
     # 用户进程数
     echo -e "${WHITE}⚙️  用户进程:${NC}"
-    local process_count=$(ps aux | grep "^$(whoami)" | wc -l)
-    echo "  当前进程数: $process_count"
+    local process_count=$(ps -u "$(whoami)" | wc -l)
+    echo "  当前进程数: $((process_count - 1))"
 
     # Screen 会话
     echo -e "${WHITE}📺 Screen 会话:${NC}"
@@ -2261,14 +2261,16 @@ system_diagnostic_menu() {
         echo "1. 🔐 检查 binexec 状态"
         echo "2. 🐳 检查容器支持"
         echo "3. 📊 系统资源检查"
+        echo "4. 🧹 清理僵尸进程"
         echo "0. 🔙 返回主菜单"
         echo
-        read -p "请选择操作 [0-3]: " choice
+        read -p "请选择操作 [0-4]: " choice
 
         case $choice in
             1) clear; check_binexec; read -p "按回车键继续..." ;;
             2) clear; check_container_support; read -p "按回车键继续..." ;;
             3) system_resource_check ;;
+            4) cleanup_zombie_processes ;;
             0) break ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
@@ -2396,8 +2398,30 @@ show_version() {
     echo "作者: serv00-tool"
 }
 
+# 检查系统资源
+check_system_resources() {
+    # 检查进程数
+    local process_count=$(ps -u "$(whoami)" | wc -l)
+    if [ "$process_count" -gt 50 ]; then
+        echo -e "${YELLOW}警告: 当前进程数较多 ($process_count)，可能影响性能${NC}"
+        echo -e "${YELLOW}建议清理不必要的进程后再运行${NC}"
+        sleep 2
+    fi
+
+    # 检查磁盘空间
+    local disk_usage=$(df ~ | tail -1 | awk '{print $5}' | sed 's/%//')
+    if [ "$disk_usage" -gt 95 ]; then
+        echo -e "${RED}警告: 磁盘空间不足 (${disk_usage}% 已用)${NC}"
+        echo -e "${YELLOW}请清理磁盘空间后再运行${NC}"
+        sleep 2
+    fi
+}
+
 # 主程序入口
 main() {
+    # 检查系统资源
+    check_system_resources
+
     # 处理命令行参数
     case "${1:-}" in
         -h|--help)
@@ -2477,6 +2501,46 @@ main() {
 
     # 进入主菜单
     main_menu
+}
+
+# 清理僵尸进程
+cleanup_zombie_processes() {
+    echo -e "${BLUE}=== 🧹 清理僵尸进程 ===${NC}"
+    echo
+
+    # 检查僵尸进程
+    echo -e "${YELLOW}检查僵尸进程...${NC}"
+    local zombie_count=$(ps -u "$(whoami)" -o stat 2>/dev/null | grep -c Z || echo "0")
+
+    if [ "$zombie_count" -gt 0 ]; then
+        echo -e "${RED}发现 $zombie_count 个僵尸进程${NC}"
+        ps -u "$(whoami)" -o pid,ppid,stat,comm 2>/dev/null | grep " Z " | while read pid ppid stat comm; do
+            echo -e "${WHITE}僵尸进程: PID=$pid PPID=$ppid CMD=$comm${NC}"
+        done
+        echo -e "${YELLOW}注意: 僵尸进程需要重启父进程才能清理${NC}"
+    else
+        echo -e "${GREEN}✓ 没有发现僵尸进程${NC}"
+    fi
+
+    # 检查进程数
+    echo -e "${YELLOW}检查进程数...${NC}"
+    local process_count=$(ps -u "$(whoami)" 2>/dev/null | wc -l || echo "1")
+    echo -e "${WHITE}当前进程数: $((process_count - 1))${NC}"
+
+    if [ "$process_count" -gt 30 ]; then
+        echo -e "${YELLOW}进程数较多，显示占用资源最多的进程:${NC}"
+        ps -u "$(whoami)" -o pid,%cpu,%mem,comm --sort=-%cpu 2>/dev/null | head -6 || echo "无法获取进程信息"
+        echo
+        echo -e "${CYAN}建议:${NC}"
+        echo -e "1. 检查是否有不必要的后台进程"
+        echo -e "2. 使用服务管理功能停止不需要的应用"
+        echo -e "3. 重启 SSH 连接清理临时进程"
+    else
+        echo -e "${GREEN}✓ 进程数正常${NC}"
+    fi
+
+    echo
+    read -p "按回车键继续..."
 }
 
 # 脚本入口点
