@@ -1007,7 +1007,7 @@ install_frps() {
 
     echo -e "${GREEN}✓ frps 安装完成${NC}"
     echo -e "${WHITE}位置: $frps_dir${NC}"
-    echo -e "${WHITE}配置文件: $frps_dir/frps.toml${NC}"
+    echo -e "${WHITE}配置文件: $frps_dir/frps.ini${NC}"
     echo -e "${WHITE}启动命令: frp 内网穿透 -> frps 服务管理${NC}"
 
     log "安装 frps 服务"
@@ -1036,24 +1036,18 @@ setup_frps_config() {
         auth_token=$(openssl rand -hex 16 2>/dev/null || echo "serv00-$(date +%s)")
     fi
 
-    # 创建最简 TOML 配置文件
-    cat > frps.toml << EOF
-# frps 服务端配置文件 (最简配置)
-bindPort = $bind_port
-
-[webServer]
-port = $dashboard_port
-user = "$dashboard_user"
-password = "$dashboard_pwd"
-
-[auth]
-method = "token"
-token = "$auth_token"
-
-[log]
-to = "./frps.log"
-level = "info"
-maxDays = 3
+    # 创建 INI 配置文件（v0.51.3 使用 INI 格式）
+    cat > frps.ini << EOF
+# frps 服务端配置文件 (INI 格式，适用于 v0.51.3)
+[common]
+bind_port = $bind_port
+dashboard_port = $dashboard_port
+dashboard_user = $dashboard_user
+dashboard_pwd = $dashboard_pwd
+token = $auth_token
+log_file = ./frps.log
+log_level = info
+log_max_days = 3
 EOF
 
     # 创建启动脚本
@@ -1067,22 +1061,22 @@ mkdir -p "$WORK_DIR"
 
 # 复制必要文件到临时目录
 cp frps "$WORK_DIR/"
-cp frps.toml "$WORK_DIR/"
+cp frps.ini "$WORK_DIR/"
 
 # 修改配置文件中的日志路径为绝对路径
-sed "s|to = \"./frps.log\"|to = \"$(pwd)/frps.log\"|g" frps.toml > "$WORK_DIR/frps.toml"
+sed "s|log_file = ./frps.log|log_file = $(pwd)/frps.log|g" frps.ini > "$WORK_DIR/frps.ini"
 
 echo "启动 frps 服务..."
-echo "配置文件: $WORK_DIR/frps.toml"
+echo "配置文件: $WORK_DIR/frps.ini"
 echo "日志文件: $(pwd)/frps.log"
 echo "工作目录: $WORK_DIR"
-echo "Dashboard: http://$(hostname):$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')"
-echo "认证 token: $(grep 'token.*=' frps.toml | cut -d'"' -f2)"
+echo "Dashboard: http://$(hostname):$(grep 'dashboard_port' frps.ini | cut -d'=' -f2 | tr -d ' ')"
+echo "认证 token: $(grep 'token' frps.ini | cut -d'=' -f2 | tr -d ' ')"
 echo "----------------------------------------"
 
 # 在临时目录中启动 frps
 cd "$WORK_DIR"
-exec ./frps -c frps.toml
+exec ./frps -c frps.ini
 
 # 清理函数（虽然 exec 后不会执行，但保留以防万一）
 cleanup() {
@@ -1145,8 +1139,8 @@ if [ ! -f "./frps" ]; then
 fi
 
 # 检查配置文件是否存在
-if [ ! -f "./frps.toml" ]; then
-    echo "错误: frps.toml 配置文件不存在"
+if [ ! -f "./frps.ini" ]; then
+    echo "错误: frps.ini 配置文件不存在"
     exit 1
 fi
 
@@ -1156,21 +1150,21 @@ mkdir -p "$WORK_DIR"
 
 # 复制必要文件到临时目录
 cp frps "$WORK_DIR/"
-cp frps.toml "$WORK_DIR/"
+cp frps.ini "$WORK_DIR/"
 
 # 修改配置文件中的日志路径为绝对路径
-sed "s|to = \"./frps.log\"|to = \"$FRPS_DIR/frps.log\"|g" frps.toml > "$WORK_DIR/frps.toml"
+sed "s|log_file = ./frps.log|log_file = $FRPS_DIR/frps.log|g" frps.ini > "$WORK_DIR/frps.ini"
 
 # 启动 frps
 echo "启动 frps 服务..."
 echo "工作目录: $WORK_DIR"
-screen -dmS "$SCREEN_NAME" bash -c "cd '$WORK_DIR' && ./frps -c frps.toml"
+screen -dmS "$SCREEN_NAME" bash -c "cd '$WORK_DIR' && ./frps -c frps.ini"
 
 # 等待一下检查是否启动成功
 sleep 3
 if screen -list | grep -q "$SCREEN_NAME"; then
     echo "✓ frps 启动成功 (screen: $SCREEN_NAME)"
-    echo "Dashboard: http://$(hostname):$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')"
+    echo "Dashboard: http://$(hostname):$(grep 'dashboard_port' frps.ini | cut -d'=' -f2 | tr -d ' ')"
 else
     echo "✗ frps 启动失败"
     # 清理临时目录
@@ -1323,8 +1317,8 @@ start_frps_service() {
     cd "$frps_dir"
 
     # 检查配置文件
-    if [ ! -f "frps.toml" ]; then
-        echo -e "${RED}✗ 配置文件 frps.toml 不存在${NC}"
+    if [ ! -f "frps.ini" ]; then
+        echo -e "${RED}✗ 配置文件 frps.ini 不存在${NC}"
         read -p "按回车键继续..."
         return
     fi
@@ -1335,25 +1329,19 @@ start_frps_service() {
         chmod +x frps
     fi
 
-    # 测试配置文件语法
-    echo -e "${YELLOW}检查配置文件语法...${NC}"
-    if ! ./frps verify -c frps.toml >/dev/null 2>&1; then
-        echo -e "${RED}✗ 配置文件语法错误${NC}"
-        echo -e "${YELLOW}尝试修复配置文件...${NC}"
+    # 检查端口配置
+    echo -e "${YELLOW}检查配置文件...${NC}"
+    local bind_port=$(grep 'bind_port' frps.ini | cut -d'=' -f2 | tr -d ' ')
+    local web_port=$(grep 'dashboard_port' frps.ini | cut -d'=' -f2 | tr -d ' ')
 
-        # 检查端口配置
-        local bind_port=$(grep 'bindPort.*=' frps.toml | cut -d'=' -f2 | tr -d ' ')
-        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
-
-        if [ -z "$bind_port" ] || [ -z "$web_port" ]; then
-            echo -e "${RED}✗ 端口配置缺失，请重新配置${NC}"
-            read -p "按回车键继续..."
-            return
-        fi
+    if [ -z "$bind_port" ] || [ -z "$web_port" ]; then
+        echo -e "${RED}✗ 端口配置缺失，请重新配置${NC}"
+        read -p "按回车键继续..."
+        return
     fi
 
     echo -e "${YELLOW}启动 frps 服务...${NC}"
-    echo -e "${WHITE}配置文件: $(pwd)/frps.toml${NC}"
+    echo -e "${WHITE}配置文件: $(pwd)/frps.ini${NC}"
     echo -e "${WHITE}日志文件: $(pwd)/frps.log${NC}"
 
     # 创建临时工作目录（解决权限问题）
@@ -1362,15 +1350,15 @@ start_frps_service() {
 
     # 复制必要文件到临时目录
     cp frps "$work_dir/"
-    cp frps.toml "$work_dir/"
+    cp frps.ini "$work_dir/"
 
     # 修改配置文件中的日志路径为绝对路径
-    sed "s|to = \"./frps.log\"|to = \"$(pwd)/frps.log\"|g" frps.toml > "$work_dir/frps.toml"
+    sed "s|log_file = ./frps.log|log_file = $(pwd)/frps.log|g" frps.ini > "$work_dir/frps.ini"
 
     echo -e "${WHITE}工作目录: $work_dir${NC}"
 
     # 启动服务并捕获输出
-    screen -dmS "frps" bash -c "cd '$work_dir' && ./frps -c frps.toml 2>&1 | tee -a '$frps_dir/startup.log'"
+    screen -dmS "frps" bash -c "cd '$work_dir' && ./frps -c frps.ini 2>&1 | tee -a '$frps_dir/startup.log'"
 
     # 等待启动
     echo -e "${YELLOW}等待服务启动...${NC}"
@@ -1379,7 +1367,6 @@ start_frps_service() {
     # 检查启动状态
     if screen -list | grep -q "frps"; then
         echo -e "${GREEN}✓ frps 启动成功${NC}"
-        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
         echo -e "${WHITE}Dashboard: http://$(hostname):$web_port${NC}"
 
         # 显示最近的日志
@@ -1404,7 +1391,7 @@ start_frps_service() {
         echo -e "${BLUE}可能的解决方案:${NC}"
         echo -e "1. 检查端口是否被占用"
         echo -e "2. 检查端口是否在 serv00 允许范围内"
-        echo -e "3. 检查配置文件语法"
+        echo -e "3. 使用诊断功能检查问题"
         echo -e "4. 查看完整日志: cat $frps_dir/frps.log"
     fi
 
@@ -1890,7 +1877,7 @@ fix_frps_config() {
     echo
 
     local frps_dir="$HOME/apps/frps"
-    local config_file="$frps_dir/frps.toml"
+    local config_file="$frps_dir/frps.ini"
 
     if [ ! -f "$config_file" ]; then
         echo -e "${RED}✗ 配置文件不存在: $config_file${NC}"
@@ -1903,71 +1890,36 @@ fix_frps_config() {
     echo -e "${YELLOW}检查配置文件问题...${NC}"
 
     # 备份原配置文件
-    cp frps.toml frps.toml.backup.$(date +%Y%m%d_%H%M%S)
+    cp frps.ini frps.ini.backup.$(date +%Y%m%d_%H%M%S)
     echo -e "${GREEN}✓ 已备份原配置文件${NC}"
 
-    # 检查并修复常见问题
-    local fixed=0
+    # 提取现有配置
+    local bind_port=$(grep 'bind_port' frps.ini | cut -d'=' -f2 | tr -d ' ')
+    local web_port=$(grep 'dashboard_port' frps.ini | cut -d'=' -f2 | tr -d ' ')
+    local web_user=$(grep 'dashboard_user' frps.ini | cut -d'=' -f2 | tr -d ' ')
+    local web_pass=$(grep 'dashboard_pwd' frps.ini | cut -d'=' -f2 | tr -d ' ')
+    local token=$(grep 'token' frps.ini | cut -d'=' -f2 | tr -d ' ')
 
-    # 1. 修复 allowPorts 字段
-    if grep -q "allowPorts.*=" frps.toml; then
-        echo -e "${YELLOW}修复 allowPorts 字段格式...${NC}"
-
-        # 提取端口配置
-        local bind_port=$(grep 'bindPort.*=' frps.toml | cut -d'=' -f2 | tr -d ' ')
-        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
-        local web_user=$(grep 'user.*=' frps.toml | cut -d'"' -f2)
-        local web_pass=$(grep 'password.*=' frps.toml | cut -d'"' -f2)
-        local token=$(grep 'token.*=' frps.toml | cut -d'"' -f2)
-
-        # 重新生成最简配置文件
-        cat > frps.toml << EOF
-# frps 服务端配置文件 (最简配置)
-bindPort = $bind_port
-
-[webServer]
-port = $web_port
-user = "$web_user"
-password = "$web_pass"
-
-[auth]
-method = "token"
-token = "$token"
-
-[log]
-to = "./frps.log"
-level = "info"
-maxDays = 3
+    # 重新生成 INI 配置文件
+    cat > frps.ini << EOF
+# frps 服务端配置文件 (INI 格式，适用于 v0.51.3)
+[common]
+bind_port = $bind_port
+dashboard_port = $web_port
+dashboard_user = $web_user
+dashboard_pwd = $web_pass
+token = $token
+log_file = ./frps.log
+log_level = info
+log_max_days = 3
 EOF
 
-        echo -e "${GREEN}✓ 已修复 allowPorts 字段格式${NC}"
-        ((fixed++))
-    fi
+    echo -e "${GREEN}✓ 已重新生成配置文件${NC}"
 
-    # 2. 检查语法
-    echo -e "${YELLOW}验证修复后的配置...${NC}"
-    if ./frps verify -c frps.toml >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ 配置文件语法正确${NC}"
-    else
-        echo -e "${RED}✗ 配置文件仍有语法错误${NC}"
-        echo -e "${YELLOW}错误详情:${NC}"
-        ./frps verify -c frps.toml 2>&1 | head -5
-
-        echo -e "${YELLOW}恢复备份文件...${NC}"
-        cp frps.toml.backup.* frps.toml 2>/dev/null
-        echo -e "${RED}修复失败，已恢复原配置${NC}"
-        read -p "按回车键继续..."
-        return
-    fi
-
-    if [ $fixed -gt 0 ]; then
-        echo -e "${GREEN}✓ 配置修复完成，共修复 $fixed 个问题${NC}"
-        echo -e "${WHITE}备份文件: $(ls frps.toml.backup.* | tail -1)${NC}"
-        echo
-        echo -e "${YELLOW}建议重启 frps 服务以应用新配置${NC}"
-    else
-        echo -e "${GREEN}✓ 配置文件无需修复${NC}"
-    fi
+    echo -e "${GREEN}✓ 配置修复完成${NC}"
+    echo -e "${WHITE}备份文件: $(ls frps.ini.backup.* | tail -1)${NC}"
+    echo
+    echo -e "${YELLOW}建议重启 frps 服务以应用新配置${NC}"
 
     read -p "按回车键继续..."
 }
