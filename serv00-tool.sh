@@ -649,7 +649,7 @@ create_frpc_app() {
     local extract_dir="frp_${latest_version#v}_freebsd_${frp_arch}"
     if [ -d "$extract_dir" ]; then
         cp "$extract_dir/frpc" .
-        cp "$extract_dir/frpc.ini" .
+        # 不再复制 ini 文件，我们使用 TOML
         chmod +x frpc
         rm -rf "$extract_dir" "$filename"
         echo -e "${GREEN}✓ frpc 下载成功${NC}"
@@ -1163,7 +1163,7 @@ install_frps() {
     local extract_dir="frp_${latest_version#v}_freebsd_${frp_arch}"
     if [ -d "$extract_dir" ]; then
         cp "$extract_dir/frps" .
-        cp "$extract_dir/frps.ini" .
+        # 不再复制 ini 文件，我们使用 TOML
         chmod +x frps
         rm -rf "$extract_dir" "$filename"
         echo -e "${GREEN}✓ frps 安装成功${NC}"
@@ -1181,8 +1181,8 @@ install_frps() {
 
     echo -e "${GREEN}✓ frps 安装完成${NC}"
     echo -e "${WHITE}位置: $frps_dir${NC}"
-    echo -e "${WHITE}配置文件: $frps_dir/frps.ini${NC}"
-    echo -e "${WHITE}启动命令: 在应用管理中启动 frps${NC}"
+    echo -e "${WHITE}配置文件: $frps_dir/frps.toml${NC}"
+    echo -e "${WHITE}启动命令: frp 内网穿透 -> frps 服务管理${NC}"
 
     log "安装 frps 服务"
     read -p "按回车键继续..."
@@ -1256,14 +1256,35 @@ EOF
     cat > start.sh << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
+
+# 创建临时工作目录（解决权限问题）
+WORK_DIR="/tmp/frps_$(whoami)_$$"
+mkdir -p "$WORK_DIR"
+
+# 复制必要文件到临时目录
+cp frps "$WORK_DIR/"
+cp frps.toml "$WORK_DIR/"
+
+# 修改配置文件中的日志路径为绝对路径
+sed "s|to = \"./frps.log\"|to = \"$(pwd)/frps.log\"|g" frps.toml > "$WORK_DIR/frps.toml"
+
 echo "启动 frps 服务..."
-echo "配置文件: $(pwd)/frps.toml"
+echo "配置文件: $WORK_DIR/frps.toml"
 echo "日志文件: $(pwd)/frps.log"
-echo "Dashboard: http://$(hostname):7500"
-echo "认证 token: $(grep '^token' frps.toml | cut -d'"' -f2)"
-echo "Prometheus: http://$(hostname):7500/metrics"
+echo "工作目录: $WORK_DIR"
+echo "Dashboard: http://$(hostname):$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')"
+echo "认证 token: $(grep 'token.*=' frps.toml | cut -d'"' -f2)"
 echo "----------------------------------------"
-./frps -c frps.toml
+
+# 在临时目录中启动 frps
+cd "$WORK_DIR"
+exec ./frps -c frps.toml
+
+# 清理函数（虽然 exec 后不会执行，但保留以防万一）
+cleanup() {
+    rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
 EOF
 
     chmod +x start.sh
@@ -1303,7 +1324,6 @@ create_autostart_script() {
 # frps 开机自启动脚本
 
 FRPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FRPS_NAME="frps"
 SCREEN_NAME="frps-autostart"
 
 cd "$FRPS_DIR"
@@ -1326,17 +1346,31 @@ if [ ! -f "./frps.toml" ]; then
     exit 1
 fi
 
+# 创建临时工作目录
+WORK_DIR="/tmp/frps_$(whoami)_autostart"
+mkdir -p "$WORK_DIR"
+
+# 复制必要文件到临时目录
+cp frps "$WORK_DIR/"
+cp frps.toml "$WORK_DIR/"
+
+# 修改配置文件中的日志路径为绝对路径
+sed "s|to = \"./frps.log\"|to = \"$FRPS_DIR/frps.log\"|g" frps.toml > "$WORK_DIR/frps.toml"
+
 # 启动 frps
 echo "启动 frps 服务..."
-screen -dmS "$SCREEN_NAME" bash -c "cd '$FRPS_DIR' && ./frps -c frps.toml"
+echo "工作目录: $WORK_DIR"
+screen -dmS "$SCREEN_NAME" bash -c "cd '$WORK_DIR' && ./frps -c frps.toml"
 
 # 等待一下检查是否启动成功
-sleep 2
+sleep 3
 if screen -list | grep -q "$SCREEN_NAME"; then
     echo "✓ frps 启动成功 (screen: $SCREEN_NAME)"
     echo "Dashboard: http://$(hostname):$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')"
 else
     echo "✗ frps 启动失败"
+    # 清理临时目录
+    rm -rf "$WORK_DIR"
     exit 1
 fi
 EOF
@@ -1396,10 +1430,11 @@ frps_management_menu() {
         echo "6. ✏️  编辑配置"
         echo "7. ℹ️  配置信息"
         echo "8. 🔧 测试自启"
-        echo "9. 🗑️  卸载服务"
+        echo "9. 🔍 启动诊断"
+        echo "A. 🗑️  卸载服务"
         echo "0. 🔙 返回上级"
         echo
-        read -p "请选择操作 [0-9]: " choice
+        read -p "请选择操作 [0-9,A]: " choice
 
         case $choice in
             1) check_frps_status ;;
@@ -1410,7 +1445,8 @@ frps_management_menu() {
             6) edit_frps_config ;;
             7) show_frps_config_info ;;
             8) test_frps_autostart ;;
-            9) uninstall_frps ;;
+            9) diagnose_frps_startup ;;
+            [Aa]) uninstall_frps ;;
             0) break ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
@@ -1514,8 +1550,21 @@ start_frps_service() {
     echo -e "${WHITE}配置文件: $(pwd)/frps.toml${NC}"
     echo -e "${WHITE}日志文件: $(pwd)/frps.log${NC}"
 
+    # 创建临时工作目录（解决权限问题）
+    local work_dir="/tmp/frps_$(whoami)_$$"
+    mkdir -p "$work_dir"
+
+    # 复制必要文件到临时目录
+    cp frps "$work_dir/"
+    cp frps.toml "$work_dir/"
+
+    # 修改配置文件中的日志路径为绝对路径
+    sed "s|to = \"./frps.log\"|to = \"$(pwd)/frps.log\"|g" frps.toml > "$work_dir/frps.toml"
+
+    echo -e "${WHITE}工作目录: $work_dir${NC}"
+
     # 启动服务并捕获输出
-    screen -dmS "frps" bash -c "cd '$frps_dir' && ./frps -c frps.toml 2>&1 | tee -a startup.log"
+    screen -dmS "frps" bash -c "cd '$work_dir' && ./frps -c frps.toml 2>&1 | tee -a '$frps_dir/startup.log'"
 
     # 等待启动
     echo -e "${YELLOW}等待服务启动...${NC}"
@@ -1593,7 +1642,19 @@ restart_frps_service() {
     if [ -d "$frps_dir" ] && [ -f "$frps_dir/frps" ]; then
         cd "$frps_dir"
         echo -e "${YELLOW}启动 frps 服务...${NC}"
-        screen -dmS "frps" bash -c "cd '$frps_dir' && ./frps -c frps.toml"
+
+        # 创建临时工作目录
+        local work_dir="/tmp/frps_$(whoami)_restart"
+        mkdir -p "$work_dir"
+
+        # 复制必要文件到临时目录
+        cp frps "$work_dir/"
+        cp frps.toml "$work_dir/"
+
+        # 修改配置文件中的日志路径为绝对路径
+        sed "s|to = \"./frps.log\"|to = \"$(pwd)/frps.log\"|g" frps.toml > "$work_dir/frps.toml"
+
+        screen -dmS "frps" bash -c "cd '$work_dir' && ./frps -c frps.toml"
 
         sleep 2
         if screen -list | grep -q "frps"; then
@@ -2058,6 +2119,159 @@ disk_space_check() {
 
     echo -e "${WHITE}目录大小统计:${NC}"
     du -sh ~/apps ~/bin ~/.serv00-tool 2>/dev/null | sort -hr
+    echo
+
+    read -p "按回车键继续..."
+}
+
+# frps 启动诊断
+diagnose_frps_startup() {
+    echo -e "${BLUE}=== 🔍 frps 启动诊断 ===${NC}"
+    echo
+
+    local frps_dir="$HOME/apps/frps"
+
+    # 1. 检查安装状态
+    echo -e "${YELLOW}1. 检查安装状态...${NC}"
+    if [ ! -d "$frps_dir" ]; then
+        echo -e "${RED}✗ frps 未安装${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+    echo -e "${GREEN}✓ frps 目录存在: $frps_dir${NC}"
+
+    cd "$frps_dir"
+
+    # 2. 检查文件完整性
+    echo -e "${YELLOW}2. 检查文件完整性...${NC}"
+    if [ ! -f "frps" ]; then
+        echo -e "${RED}✗ frps 可执行文件不存在${NC}"
+    else
+        echo -e "${GREEN}✓ frps 可执行文件存在${NC}"
+        if [ -x "frps" ]; then
+            echo -e "${GREEN}✓ frps 有执行权限${NC}"
+        else
+            echo -e "${YELLOW}⚠ frps 无执行权限，正在修复...${NC}"
+            chmod +x frps
+            echo -e "${GREEN}✓ 权限已修复${NC}"
+        fi
+    fi
+
+    if [ ! -f "frps.toml" ]; then
+        echo -e "${RED}✗ frps.toml 配置文件不存在${NC}"
+    else
+        echo -e "${GREEN}✓ frps.toml 配置文件存在${NC}"
+    fi
+
+    # 3. 检查配置文件语法
+    echo -e "${YELLOW}3. 检查配置文件语法...${NC}"
+    if [ -f "frps.toml" ] && [ -x "frps" ]; then
+        if ./frps verify -c frps.toml >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ 配置文件语法正确${NC}"
+        else
+            echo -e "${RED}✗ 配置文件语法错误${NC}"
+            echo -e "${YELLOW}错误详情:${NC}"
+            ./frps verify -c frps.toml 2>&1 | head -5
+        fi
+    else
+        echo -e "${YELLOW}⚠ 跳过语法检查（文件缺失）${NC}"
+    fi
+
+    # 4. 检查端口配置
+    echo -e "${YELLOW}4. 检查端口配置...${NC}"
+    if [ -f "frps.toml" ]; then
+        local bind_port=$(grep 'bindPort.*=' frps.toml | cut -d'=' -f2 | tr -d ' ')
+        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
+
+        if [ -n "$bind_port" ]; then
+            echo -e "${GREEN}✓ 监听端口: $bind_port${NC}"
+            if [ "$bind_port" -ge 10000 ] && [ "$bind_port" -le 65535 ]; then
+                echo -e "${GREEN}✓ 端口在 serv00 允许范围内${NC}"
+            else
+                echo -e "${RED}✗ 端口不在 serv00 允许范围 (10000-65535)${NC}"
+            fi
+        else
+            echo -e "${RED}✗ 未找到监听端口配置${NC}"
+        fi
+
+        if [ -n "$web_port" ]; then
+            echo -e "${GREEN}✓ Dashboard 端口: $web_port${NC}"
+        else
+            echo -e "${RED}✗ 未找到 Dashboard 端口配置${NC}"
+        fi
+    fi
+
+    # 5. 检查端口占用
+    echo -e "${YELLOW}5. 检查端口占用...${NC}"
+    if [ -n "$bind_port" ] && command -v sockstat >/dev/null 2>&1; then
+        if sockstat -l | grep ":$bind_port " >/dev/null; then
+            echo -e "${RED}✗ 端口 $bind_port 已被占用${NC}"
+            sockstat -l | grep ":$bind_port "
+        else
+            echo -e "${GREEN}✓ 端口 $bind_port 未被占用${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ 无法检查端口占用${NC}"
+    fi
+
+    # 6. 测试临时目录启动
+    echo -e "${YELLOW}6. 测试临时目录启动...${NC}"
+    if [ -f "frps" ] && [ -f "frps.toml" ]; then
+        local test_dir="/tmp/frps_test_$(whoami)_$$"
+        mkdir -p "$test_dir"
+
+        cp frps "$test_dir/"
+        sed "s|to = \"./frps.log\"|to = \"$(pwd)/test.log\"|g" frps.toml > "$test_dir/frps.toml"
+
+        echo -e "${WHITE}测试目录: $test_dir${NC}"
+
+        # 尝试启动（5秒后自动停止）
+        cd "$test_dir"
+        timeout 5 ./frps -c frps.toml >/dev/null 2>&1 &
+        local test_pid=$!
+        sleep 2
+
+        if kill -0 $test_pid 2>/dev/null; then
+            echo -e "${GREEN}✓ 临时目录启动测试成功${NC}"
+            kill $test_pid 2>/dev/null
+        else
+            echo -e "${RED}✗ 临时目录启动测试失败${NC}"
+        fi
+
+        cd "$frps_dir"
+        rm -rf "$test_dir"
+    else
+        echo -e "${YELLOW}⚠ 跳过启动测试（文件缺失）${NC}"
+    fi
+
+    # 7. 检查系统资源
+    echo -e "${YELLOW}7. 检查系统资源...${NC}"
+
+    # 检查磁盘空间
+    local disk_usage=$(df ~ | tail -1 | awk '{print $5}' | sed 's/%//')
+    if [ "$disk_usage" -lt 90 ]; then
+        echo -e "${GREEN}✓ 磁盘空间充足 (${disk_usage}% 已用)${NC}"
+    else
+        echo -e "${RED}✗ 磁盘空间不足 (${disk_usage}% 已用)${NC}"
+    fi
+
+    # 检查进程数
+    local process_count=$(ps aux | grep "^$(whoami)" | wc -l)
+    echo -e "${GREEN}✓ 用户进程数: $process_count${NC}"
+
+    echo
+    echo -e "${CYAN}=== 诊断总结 ===${NC}"
+    echo -e "${WHITE}如果所有检查都通过但仍无法启动，可能的原因：${NC}"
+    echo -e "1. serv00 系统限制或维护"
+    echo -e "2. 网络连接问题"
+    echo -e "3. 临时文件系统权限问题"
+    echo -e "4. 资源配额限制"
+    echo
+    echo -e "${WHITE}建议解决方案：${NC}"
+    echo -e "1. 检查 serv00 状态页面"
+    echo -e "2. 尝试重新安装 frps"
+    echo -e "3. 联系 serv00 技术支持"
+    echo -e "4. 查看完整日志: cat $frps_dir/frps.log"
     echo
 
     read -p "按回车键继续..."
