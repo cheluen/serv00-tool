@@ -192,11 +192,11 @@ exit
 
 ### Q: frps 能在 serv00 上运行吗？
 **可以！** 工具提供完整的 frps 支持：
-- ✅ 自动下载适配 FreeBSD 的 frp 最新版本
-- ✅ 使用最新 TOML 配置格式（不再使用 INI）
+- ✅ 使用固定稳定版本 v0.51.3（避免配置格式变动）
+- ✅ 使用最简 TOML 配置格式（确保兼容性）
 - ✅ 自动配置开机自启动（crontab + screen）
 - ✅ 专门的 frps 管理界面
-- ✅ 支持 Dashboard 和 Prometheus 监控
+- ✅ 支持 Dashboard 管理界面
 - ⚠️ 注意端口限制，使用 serv00 允许的端口范围
 
 ### Q: frps 配置文件在哪里？

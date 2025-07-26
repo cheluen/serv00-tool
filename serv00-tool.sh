@@ -599,21 +599,9 @@ create_frpc_app() {
             ;;
     esac
 
-    # 获取最新版本
-    echo -e "${YELLOW}获取 frp 最新版本...${NC}"
-    local latest_version=""
-    if command -v curl >/dev/null 2>&1; then
-        latest_version=$(curl -s https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-    elif command -v wget >/dev/null 2>&1; then
-        latest_version=$(wget -qO- https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-    fi
-
-    if [ -z "$latest_version" ]; then
-        latest_version="v0.52.3"  # 备用版本
-        echo -e "${YELLOW}无法获取最新版本，使用默认版本: $latest_version${NC}"
-    else
-        echo -e "${GREEN}最新版本: $latest_version${NC}"
-    fi
+    # 使用固定稳定版本
+    local latest_version="v0.51.3"
+    echo -e "${GREEN}使用稳定版本: $latest_version${NC}"
 
     # 下载 frp
     local download_url="https://github.com/fatedier/frp/releases/download/${latest_version}/frp_${latest_version#v}_freebsd_${frp_arch}.tar.gz"
@@ -966,21 +954,9 @@ install_frps() {
             ;;
     esac
 
-    # 获取最新版本
-    echo -e "${YELLOW}获取 frp 最新版本...${NC}"
-    local latest_version=""
-    if command -v curl >/dev/null 2>&1; then
-        latest_version=$(curl -s https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-    elif command -v wget >/dev/null 2>&1; then
-        latest_version=$(wget -qO- https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-    fi
-
-    if [ -z "$latest_version" ]; then
-        latest_version="v0.52.3"  # 备用版本
-        echo -e "${YELLOW}无法获取最新版本，使用默认版本: $latest_version${NC}"
-    else
-        echo -e "${GREEN}最新版本: $latest_version${NC}"
-    fi
+    # 使用固定稳定版本
+    local latest_version="v0.51.3"
+    echo -e "${GREEN}使用稳定版本: $latest_version${NC}"
 
     # 下载 frp
     local download_url="https://github.com/fatedier/frp/releases/download/${latest_version}/frp_${latest_version#v}_freebsd_${frp_arch}.tar.gz"
@@ -1060,48 +1036,24 @@ setup_frps_config() {
         auth_token=$(openssl rand -hex 16 2>/dev/null || echo "serv00-$(date +%s)")
     fi
 
-    # 创建 TOML 配置文件
+    # 创建最简 TOML 配置文件
     cat > frps.toml << EOF
-# frps 服务端配置文件 (TOML 格式)
-# 配置文档: https://gofrp.org/zh-cn/docs/reference/server-configures/
-
-# 基本配置
-bindAddr = "0.0.0.0"
+# frps 服务端配置文件 (最简配置)
 bindPort = $bind_port
 
-# Web 管理界面配置
 [webServer]
-addr = "0.0.0.0"
 port = $dashboard_port
 user = "$dashboard_user"
 password = "$dashboard_pwd"
 
-# 认证配置
 [auth]
 method = "token"
 token = "$auth_token"
 
-# 日志配置
 [log]
 to = "./frps.log"
 level = "info"
 maxDays = 3
-
-# 传输配置
-[transport]
-maxPoolCount = 5
-tcpKeepalive = 7200
-
-# 限制配置
-maxPortsPerClient = 5
-
-# 允许的端口范围
-[[allowPorts]]
-start = 10000
-end = 65535
-
-# 启用 Prometheus 监控 (可选)
-enablePrometheus = true
 EOF
 
     # 创建启动脚本
@@ -1968,48 +1920,24 @@ fix_frps_config() {
         local web_pass=$(grep 'password.*=' frps.toml | cut -d'"' -f2)
         local token=$(grep 'token.*=' frps.toml | cut -d'"' -f2)
 
-        # 重新生成配置文件
+        # 重新生成最简配置文件
         cat > frps.toml << EOF
-# frps 服务端配置文件 (TOML 格式)
-# 配置文档: https://gofrp.org/zh-cn/docs/reference/server-configures/
-
-# 基本配置
-bindAddr = "0.0.0.0"
+# frps 服务端配置文件 (最简配置)
 bindPort = $bind_port
 
-# Web 管理界面配置
 [webServer]
-addr = "0.0.0.0"
 port = $web_port
 user = "$web_user"
 password = "$web_pass"
 
-# 认证配置
 [auth]
 method = "token"
 token = "$token"
 
-# 日志配置
 [log]
 to = "./frps.log"
 level = "info"
 maxDays = 3
-
-# 传输配置
-[transport]
-maxPoolCount = 5
-tcpKeepalive = 7200
-
-# 限制配置
-maxPortsPerClient = 5
-
-# 允许的端口范围
-[[allowPorts]]
-start = 10000
-end = 65535
-
-# 启用 Prometheus 监控 (可选)
-enablePrometheus = true
 EOF
 
         echo -e "${GREEN}✓ 已修复 allowPorts 字段格式${NC}"
