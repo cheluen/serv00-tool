@@ -1244,9 +1244,11 @@ tcpKeepalive = 7200
 
 # 限制配置
 maxPortsPerClient = 5
-allowPorts = [
-  { start = 10000, end = 65535 }
-]
+
+# 允许的端口范围
+[[allowPorts]]
+start = 10000
+end = 65535
 
 # 启用 Prometheus 监控 (可选)
 enablePrometheus = true
@@ -1431,10 +1433,11 @@ frps_management_menu() {
         echo "7. ℹ️  配置信息"
         echo "8. 🔧 测试自启"
         echo "9. 🔍 启动诊断"
-        echo "A. 🗑️  卸载服务"
+        echo "A. 🔄 修复配置"
+        echo "B. 🗑️  卸载服务"
         echo "0. 🔙 返回上级"
         echo
-        read -p "请选择操作 [0-9,A]: " choice
+        read -p "请选择操作 [0-9,A,B]: " choice
 
         case $choice in
             1) check_frps_status ;;
@@ -1446,7 +1449,8 @@ frps_management_menu() {
             7) show_frps_config_info ;;
             8) test_frps_autostart ;;
             9) diagnose_frps_startup ;;
-            [Aa]) uninstall_frps ;;
+            [Aa]) fix_frps_config ;;
+            [Bb]) uninstall_frps ;;
             0) break ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
@@ -2171,7 +2175,14 @@ diagnose_frps_startup() {
         else
             echo -e "${RED}✗ 配置文件语法错误${NC}"
             echo -e "${YELLOW}错误详情:${NC}"
-            ./frps verify -c frps.toml 2>&1 | head -5
+            local error_msg=$(./frps verify -c frps.toml 2>&1 | head -5)
+            echo "$error_msg"
+
+            # 检查常见错误并提供修复建议
+            if echo "$error_msg" | grep -q "allowPorts"; then
+                echo -e "${CYAN}💡 检测到 allowPorts 配置错误${NC}"
+                echo -e "${WHITE}建议: 使用 'A. 🔄 修复配置' 功能自动修复${NC}"
+            fi
         fi
     else
         echo -e "${YELLOW}⚠ 跳过语法检查（文件缺失）${NC}"
@@ -2273,6 +2284,118 @@ diagnose_frps_startup() {
     echo -e "3. 联系 serv00 技术支持"
     echo -e "4. 查看完整日志: cat $frps_dir/frps.log"
     echo
+
+    read -p "按回车键继续..."
+}
+
+# 修复 frps 配置
+fix_frps_config() {
+    echo -e "${BLUE}=== 🔄 修复 frps 配置 ===${NC}"
+    echo
+
+    local frps_dir="$HOME/apps/frps"
+    local config_file="$frps_dir/frps.toml"
+
+    if [ ! -f "$config_file" ]; then
+        echo -e "${RED}✗ 配置文件不存在: $config_file${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    cd "$frps_dir"
+
+    echo -e "${YELLOW}检查配置文件问题...${NC}"
+
+    # 备份原配置文件
+    cp frps.toml frps.toml.backup.$(date +%Y%m%d_%H%M%S)
+    echo -e "${GREEN}✓ 已备份原配置文件${NC}"
+
+    # 检查并修复常见问题
+    local fixed=0
+
+    # 1. 修复 allowPorts 字段
+    if grep -q "allowPorts.*=" frps.toml; then
+        echo -e "${YELLOW}修复 allowPorts 字段格式...${NC}"
+
+        # 提取端口配置
+        local bind_port=$(grep 'bindPort.*=' frps.toml | cut -d'=' -f2 | tr -d ' ')
+        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
+        local web_user=$(grep 'user.*=' frps.toml | cut -d'"' -f2)
+        local web_pass=$(grep 'password.*=' frps.toml | cut -d'"' -f2)
+        local token=$(grep 'token.*=' frps.toml | cut -d'"' -f2)
+
+        # 重新生成配置文件
+        cat > frps.toml << EOF
+# frps 服务端配置文件 (TOML 格式)
+# 配置文档: https://gofrp.org/zh-cn/docs/reference/server-configures/
+
+# 基本配置
+bindAddr = "0.0.0.0"
+bindPort = $bind_port
+
+# Web 管理界面配置
+[webServer]
+addr = "0.0.0.0"
+port = $web_port
+user = "$web_user"
+password = "$web_pass"
+
+# 认证配置
+[auth]
+method = "token"
+token = "$token"
+
+# 日志配置
+[log]
+to = "./frps.log"
+level = "info"
+maxDays = 3
+
+# 传输配置
+[transport]
+maxPoolCount = 5
+tcpKeepalive = 7200
+
+# 限制配置
+maxPortsPerClient = 5
+
+# 允许的端口范围
+[[allowPorts]]
+start = 10000
+end = 65535
+
+# 启用 Prometheus 监控 (可选)
+enablePrometheus = true
+EOF
+
+        echo -e "${GREEN}✓ 已修复 allowPorts 字段格式${NC}"
+        ((fixed++))
+    fi
+
+    # 2. 检查语法
+    echo -e "${YELLOW}验证修复后的配置...${NC}"
+    if ./frps verify -c frps.toml >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ 配置文件语法正确${NC}"
+    else
+        echo -e "${RED}✗ 配置文件仍有语法错误${NC}"
+        echo -e "${YELLOW}错误详情:${NC}"
+        ./frps verify -c frps.toml 2>&1 | head -5
+
+        echo -e "${YELLOW}恢复备份文件...${NC}"
+        cp frps.toml.backup.* frps.toml 2>/dev/null
+        echo -e "${RED}修复失败，已恢复原配置${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    if [ $fixed -gt 0 ]; then
+        echo -e "${GREEN}✓ 配置修复完成，共修复 $fixed 个问题${NC}"
+        echo -e "${WHITE}备份文件: $(ls frps.toml.backup.* | tail -1)${NC}"
+        echo
+        echo -e "${YELLOW}建议重启 frps 服务以应用新配置${NC}"
+    else
+        echo -e "${GREEN}✓ 配置文件无需修复${NC}"
+    fi
 
     read -p "按回车键继续..."
 }
