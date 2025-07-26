@@ -15,7 +15,8 @@
 - 使用 FreeBSD `pkg` 包管理器
 
 ### 📱 应用管理（新功能）
-- **创建应用**：支持 Python Web、Node.js、静态网站
+- **创建应用**：支持 Python Web、Node.js、静态网站、frp 客户端
+- **frps 服务**：一键安装 frp 内网穿透服务端
 - **应用隔离**：独立目录、虚拟环境、Screen 会话
 - **生命周期管理**：启动、停止、状态监控
 - **模板支持**：预配置的应用模板
@@ -83,17 +84,28 @@ serv00-tool
 
 ## 🎯 应用管理示例
 
-### 创建 Python Web 应用
+### 安装 frps 内网穿透服务
 ```bash
 # 1. 进入应用管理
 ./serv00-tool.sh
-# 选择 "4. 应用管理" -> "1. 创建新应用"
+# 选择 "4. 应用管理" -> "8. 安装 frps 服务"
 
-# 2. 应用会自动创建在 ~/apps/myapp/
-# 包含：虚拟环境、启动脚本、示例代码
+# 2. 自动下载并配置 frps
+# 配置 Dashboard、认证 token 等
 
-# 3. 启动应用
-# 选择 "3. 启动应用"，应用会在 screen 会话中运行
+# 3. 启动 frps 服务
+# 选择 "3. 启动应用" -> 输入 "frps"
+```
+
+### 创建 frp 客户端
+```bash
+# 1. 创建新应用
+# 选择 "4. 应用管理" -> "1. 创建新应用" -> "4. frp 客户端"
+
+# 2. 配置连接信息
+# 服务器地址、端口、token、本地服务等
+
+# 3. 启动客户端连接
 ```
 
 ### 管理应用生命周期
@@ -102,10 +114,10 @@ serv00-tool
 ./serv00-tool.sh --list-apps
 
 # 启动应用（命令行）
-./serv00-tool.sh --start-app webapp
+./serv00-tool.sh --start-app frps
 
 # 停止应用（命令行）
-./serv00-tool.sh --stop-app webapp
+./serv00-tool.sh --stop-app frps
 ```
 
 ## 📁 项目结构
@@ -118,8 +130,10 @@ serv00-tool/
 
 运行后创建：
 ~/apps/                     # 应用目录
+├── frps/                  # frp 服务端
 ├── webapp1/               # Python 应用
 ├── webapp2/               # Node.js 应用
+├── frpc-client/           # frp 客户端
 └── static-site/           # 静态网站
 
 ~/.serv00-tool/            # 配置目录
@@ -158,6 +172,19 @@ exit
 ./serv00-tool.sh --start-app myapp
 ./serv00-tool.sh --stop-app myapp
 ```
+
+### Q: frps 能在 serv00 上运行吗？
+**可以！** 工具提供一键安装 frps 功能：
+- ✅ 自动下载适配 FreeBSD 的 frp 版本
+- ✅ 自动配置服务端参数
+- ✅ 支持 Dashboard 管理界面
+- ⚠️ 注意端口限制，使用 serv00 允许的端口范围
+
+### Q: frps 有什么限制？
+- **端口限制**：只能使用 serv00 允许的端口
+- **资源限制**：受 CPU 和内存限制
+- **连接数限制**：建议设置合理的最大连接数
+- **持久运行**：需要在 screen 会话中运行
 
 ## ⚠️ 重要说明
 

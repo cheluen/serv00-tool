@@ -397,9 +397,10 @@ app_management_menu() {
         echo "5. 查看应用状态"
         echo "6. 删除应用"
         echo "7. 应用日志"
-        echo "8. 返回主菜单"
+        echo "8. 安装 frps 服务"
+        echo "9. 返回主菜单"
         echo
-        read -p "请选择操作 [1-8]: " choice
+        read -p "请选择操作 [1-9]: " choice
 
         case $choice in
             1) create_new_app ;;
@@ -409,7 +410,8 @@ app_management_menu() {
             5) show_app_status ;;
             6) delete_app ;;
             7) show_app_logs ;;
-            8) break ;;
+            8) install_frps ;;
+            9) break ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
     done
@@ -438,14 +440,16 @@ create_new_app() {
     echo "1. Python Web 应用"
     echo "2. Node.js 应用"
     echo "3. 静态网站"
-    echo "4. 通用应用"
-    read -p "请选择 [1-4]: " app_type
+    echo "4. frp 客户端"
+    echo "5. 通用应用"
+    read -p "请选择 [1-5]: " app_type
 
     case $app_type in
         1) create_python_app "$app_name" ;;
         2) create_nodejs_app "$app_name" ;;
         3) create_static_app "$app_name" ;;
-        4) create_generic_app "$app_name" ;;
+        4) create_frpc_app "$app_name" ;;
+        5) create_generic_app "$app_name" ;;
         *) echo -e "${RED}无效选择${NC}"; read -p "按回车键继续..."; return ;;
     esac
 }
@@ -573,6 +577,323 @@ EOF
     echo -e "${WHITE}启动: cd $app_dir && ./start.sh${NC}"
 
     log "创建 Node.js 应用: $app_name"
+    read -p "按回车键继续..."
+}
+
+# 创建 frp 客户端应用
+create_frpc_app() {
+    local app_name="$1"
+    local app_dir="$HOME/apps/$app_name"
+
+    echo -e "${YELLOW}创建 frp 客户端应用: $app_name${NC}"
+
+    mkdir -p "$app_dir"
+    cd "$app_dir"
+
+    # 检测系统架构
+    local arch=$(uname -m)
+    local frp_arch=""
+    case $arch in
+        x86_64|amd64) frp_arch="amd64" ;;
+        i386|i686) frp_arch="386" ;;
+        aarch64|arm64) frp_arch="arm64" ;;
+        armv7l) frp_arch="arm" ;;
+        *)
+            echo -e "${RED}✗ 不支持的架构: $arch${NC}"
+            read -p "按回车键继续..."
+            return
+            ;;
+    esac
+
+    # 获取最新版本
+    echo -e "${YELLOW}获取 frp 最新版本...${NC}"
+    local latest_version=""
+    if command -v curl >/dev/null 2>&1; then
+        latest_version=$(curl -s https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+    elif command -v wget >/dev/null 2>&1; then
+        latest_version=$(wget -qO- https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+    fi
+
+    if [ -z "$latest_version" ]; then
+        latest_version="v0.52.3"  # 备用版本
+        echo -e "${YELLOW}无法获取最新版本，使用默认版本: $latest_version${NC}"
+    else
+        echo -e "${GREEN}最新版本: $latest_version${NC}"
+    fi
+
+    # 下载 frp
+    local download_url="https://github.com/fatedier/frp/releases/download/${latest_version}/frp_${latest_version#v}_freebsd_${frp_arch}.tar.gz"
+    local filename="frp_${latest_version#v}_freebsd_${frp_arch}.tar.gz"
+
+    echo -e "${YELLOW}下载 frp...${NC}"
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -O "$filename" "$download_url"
+    elif command -v curl >/dev/null 2>&1; then
+        curl -L -o "$filename" "$download_url"
+    else
+        echo -e "${RED}✗ 需要 wget 或 curl 来下载文件${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    if [ ! -f "$filename" ]; then
+        echo -e "${RED}✗ 下载失败${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 解压文件
+    echo -e "${YELLOW}解压文件...${NC}"
+    tar -xzf "$filename"
+
+    # 移动文件
+    local extract_dir="frp_${latest_version#v}_freebsd_${frp_arch}"
+    if [ -d "$extract_dir" ]; then
+        cp "$extract_dir/frpc" .
+        cp "$extract_dir/frpc.ini" .
+        chmod +x frpc
+        rm -rf "$extract_dir" "$filename"
+        echo -e "${GREEN}✓ frpc 下载成功${NC}"
+    else
+        echo -e "${RED}✗ 解压失败${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 配置 frpc
+    setup_frpc_config
+
+    # 创建应用配置
+    create_app_config "$app_name" "frpc" "0"
+
+    echo -e "${GREEN}✓ frp 客户端应用 $app_name 创建成功${NC}"
+    echo -e "${WHITE}位置: $app_dir${NC}"
+    echo -e "${WHITE}启动: 在应用管理中启动 $app_name${NC}"
+
+    log "创建 frp 客户端应用: $app_name"
+    read -p "按回车键继续..."
+}
+
+# 配置 frpc
+setup_frpc_config() {
+    echo -e "${YELLOW}配置 frp 客户端...${NC}"
+
+    # 获取用户输入
+    read -p "请输入 frps 服务器地址: " server_addr
+    if [ -z "$server_addr" ]; then
+        echo -e "${RED}服务器地址不能为空${NC}"
+        return
+    fi
+
+    read -p "请输入 frps 服务器端口 (默认 7000): " server_port
+    server_port=${server_port:-7000}
+
+    read -p "请输入认证 token: " auth_token
+    if [ -z "$auth_token" ]; then
+        echo -e "${RED}认证 token 不能为空${NC}"
+        return
+    fi
+
+    read -p "请输入本地服务名称 (如 ssh, web): " service_name
+    service_name=${service_name:-ssh}
+
+    read -p "请输入本地服务端口 (SSH=22, HTTP=80): " local_port
+    local_port=${local_port:-22}
+
+    read -p "请输入远程端口 (在服务器上暴露的端口): " remote_port
+    if [ -z "$remote_port" ]; then
+        echo -e "${RED}远程端口不能为空${NC}"
+        return
+    fi
+
+    # 创建配置文件
+    cat > frpc.ini << EOF
+[common]
+server_addr = $server_addr
+server_port = $server_port
+token = $auth_token
+
+# 日志配置
+log_file = ./frpc.log
+log_level = info
+log_max_days = 3
+
+[$service_name]
+type = tcp
+local_ip = 127.0.0.1
+local_port = $local_port
+remote_port = $remote_port
+EOF
+
+    # 创建启动脚本
+    cat > start.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+echo "启动 frp 客户端..."
+echo "配置文件: $(pwd)/frpc.ini"
+echo "日志文件: $(pwd)/frpc.log"
+echo "----------------------------------------"
+./frpc -c frpc.ini
+EOF
+
+    chmod +x start.sh
+
+    echo -e "${GREEN}✓ frp 客户端配置完成${NC}"
+    echo
+    echo -e "${WHITE}配置信息:${NC}"
+    echo -e "  服务器: $server_addr:$server_port"
+    echo -e "  本地服务: $service_name (127.0.0.1:$local_port)"
+    echo -e "  远程端口: $remote_port"
+    echo -e "  Token: $auth_token"
+    echo
+}
+
+# 创建静态网站应用
+create_static_app() {
+    local app_name="$1"
+    local app_dir="$HOME/apps/$app_name"
+
+    echo -e "${YELLOW}创建静态网站应用: $app_name${NC}"
+
+    mkdir -p "$app_dir"
+    cd "$app_dir"
+
+    # 创建基本 HTML 文件
+    cat > index.html << 'EOF'
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serv00 静态网站</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .info { background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎉 静态网站运行成功！</h1>
+        <div class="info">
+            <p><strong>服务器:</strong> Serv00.com</p>
+            <p><strong>系统:</strong> FreeBSD</p>
+            <p><strong>时间:</strong> <span id="time"></span></p>
+        </div>
+        <p>这是一个运行在 Serv00 上的静态网站示例。</p>
+        <p>你可以修改 index.html 文件来自定义网站内容。</p>
+    </div>
+    <script>
+        document.getElementById('time').textContent = new Date().toLocaleString();
+    </script>
+</body>
+</html>
+EOF
+
+    # 创建简单的 HTTP 服务器脚本
+    cat > start.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+port=${PORT:-8080}
+echo "启动静态网站服务器..."
+echo "访问地址: http://$(hostname):$port"
+echo "文档根目录: $(pwd)"
+echo "----------------------------------------"
+
+# 使用 Python 启动简单 HTTP 服务器
+if command -v python3 >/dev/null 2>&1; then
+    python3 -m http.server $port
+elif command -v python >/dev/null 2>&1; then
+    python -m SimpleHTTPServer $port
+else
+    echo "错误: 需要 Python 来运行 HTTP 服务器"
+    exit 1
+fi
+EOF
+
+    chmod +x start.sh
+
+    # 创建应用配置
+    create_app_config "$app_name" "static" "8080"
+
+    echo -e "${GREEN}✓ 静态网站应用 $app_name 创建成功${NC}"
+    echo -e "${WHITE}位置: $app_dir${NC}"
+    echo -e "${WHITE}启动: cd $app_dir && ./start.sh${NC}"
+
+    log "创建静态网站应用: $app_name"
+    read -p "按回车键继续..."
+}
+
+# 创建通用应用
+create_generic_app() {
+    local app_name="$1"
+    local app_dir="$HOME/apps/$app_name"
+
+    echo -e "${YELLOW}创建通用应用: $app_name${NC}"
+
+    mkdir -p "$app_dir"
+    cd "$app_dir"
+
+    # 创建基本启动脚本
+    cat > start.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+echo "通用应用启动脚本"
+echo "请编辑此文件添加你的启动命令"
+echo "当前目录: $(pwd)"
+echo "----------------------------------------"
+
+# 在这里添加你的启动命令
+# 例如:
+# ./your-program
+# python your-script.py
+# node your-app.js
+
+echo "请编辑 start.sh 文件添加启动命令"
+sleep 5
+EOF
+
+    chmod +x start.sh
+
+    # 创建 README
+    cat > README.md << 'EOF'
+# 通用应用
+
+这是一个通用应用模板。
+
+## 使用方法
+
+1. 将你的程序文件放在此目录
+2. 编辑 `start.sh` 文件，添加启动命令
+3. 通过应用管理启动应用
+
+## 目录结构
+
+```
+your-app/
+├── start.sh          # 启动脚本
+├── README.md          # 说明文档
+├── .app-config       # 应用配置（自动生成）
+└── your-files...     # 你的程序文件
+```
+
+## 注意事项
+
+- 确保你的程序有执行权限
+- 长时间运行的程序会在 screen 会话中运行
+- 查看日志可以通过应用管理功能
+EOF
+
+    # 创建应用配置
+    create_app_config "$app_name" "generic" "0"
+
+    echo -e "${GREEN}✓ 通用应用 $app_name 创建成功${NC}"
+    echo -e "${WHITE}位置: $app_dir${NC}"
+    echo -e "${WHITE}说明: 请编辑 start.sh 添加启动命令${NC}"
+
+    log "创建通用应用: $app_name"
     read -p "按回车键继续..."
 }
 
@@ -739,6 +1060,195 @@ show_app_status() {
     done
 
     read -p "按回车键继续..."
+}
+
+# 安装 frps 服务
+install_frps() {
+    echo -e "${BLUE}=== 安装 frps 内网穿透服务 ===${NC}"
+    echo
+
+    # 检查是否已安装
+    if [ -f "$HOME/apps/frps/frps" ]; then
+        echo -e "${YELLOW}frps 已经安装${NC}"
+        read -p "是否重新安装? (y/N): " reinstall
+        if [[ ! "$reinstall" =~ ^[Yy]$ ]]; then
+            read -p "按回车键继续..."
+            return
+        fi
+    fi
+
+    echo -e "${YELLOW}正在安装 frps...${NC}"
+
+    # 创建 frps 目录
+    local frps_dir="$HOME/apps/frps"
+    mkdir -p "$frps_dir"
+    cd "$frps_dir"
+
+    # 检测系统架构
+    local arch=$(uname -m)
+    local frp_arch=""
+    case $arch in
+        x86_64|amd64) frp_arch="amd64" ;;
+        i386|i686) frp_arch="386" ;;
+        aarch64|arm64) frp_arch="arm64" ;;
+        armv7l) frp_arch="arm" ;;
+        *)
+            echo -e "${RED}✗ 不支持的架构: $arch${NC}"
+            read -p "按回车键继续..."
+            return
+            ;;
+    esac
+
+    # 获取最新版本
+    echo -e "${YELLOW}获取 frp 最新版本...${NC}"
+    local latest_version=""
+    if command -v curl >/dev/null 2>&1; then
+        latest_version=$(curl -s https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+    elif command -v wget >/dev/null 2>&1; then
+        latest_version=$(wget -qO- https://api.github.com/repos/fatedier/frp/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+    fi
+
+    if [ -z "$latest_version" ]; then
+        latest_version="v0.52.3"  # 备用版本
+        echo -e "${YELLOW}无法获取最新版本，使用默认版本: $latest_version${NC}"
+    else
+        echo -e "${GREEN}最新版本: $latest_version${NC}"
+    fi
+
+    # 下载 frp
+    local download_url="https://github.com/fatedier/frp/releases/download/${latest_version}/frp_${latest_version#v}_freebsd_${frp_arch}.tar.gz"
+    local filename="frp_${latest_version#v}_freebsd_${frp_arch}.tar.gz"
+
+    echo -e "${YELLOW}下载 frp...${NC}"
+    echo -e "${WHITE}URL: $download_url${NC}"
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -O "$filename" "$download_url"
+    elif command -v curl >/dev/null 2>&1; then
+        curl -L -o "$filename" "$download_url"
+    else
+        echo -e "${RED}✗ 需要 wget 或 curl 来下载文件${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    if [ ! -f "$filename" ]; then
+        echo -e "${RED}✗ 下载失败${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 解压文件
+    echo -e "${YELLOW}解压文件...${NC}"
+    tar -xzf "$filename"
+
+    # 移动文件
+    local extract_dir="frp_${latest_version#v}_freebsd_${frp_arch}"
+    if [ -d "$extract_dir" ]; then
+        cp "$extract_dir/frps" .
+        cp "$extract_dir/frps.ini" .
+        chmod +x frps
+        rm -rf "$extract_dir" "$filename"
+        echo -e "${GREEN}✓ frps 安装成功${NC}"
+    else
+        echo -e "${RED}✗ 解压失败${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 配置 frps
+    setup_frps_config
+
+    # 创建应用配置
+    create_app_config "frps" "frps" "7000"
+
+    echo -e "${GREEN}✓ frps 安装完成${NC}"
+    echo -e "${WHITE}位置: $frps_dir${NC}"
+    echo -e "${WHITE}配置文件: $frps_dir/frps.ini${NC}"
+    echo -e "${WHITE}启动命令: 在应用管理中启动 frps${NC}"
+
+    log "安装 frps 服务"
+    read -p "按回车键继续..."
+}
+
+# 配置 frps
+setup_frps_config() {
+    echo -e "${YELLOW}配置 frps...${NC}"
+
+    # 获取用户输入
+    read -p "请输入 frps 监听端口 (默认 7000): " bind_port
+    bind_port=${bind_port:-7000}
+
+    read -p "请输入 dashboard 端口 (默认 7500): " dashboard_port
+    dashboard_port=${dashboard_port:-7500}
+
+    read -p "请输入 dashboard 用户名 (默认 admin): " dashboard_user
+    dashboard_user=${dashboard_user:-admin}
+
+    read -p "请输入 dashboard 密码 (默认 admin): " dashboard_pwd
+    dashboard_pwd=${dashboard_pwd:-admin}
+
+    read -p "请输入认证 token (留空随机生成): " auth_token
+    if [ -z "$auth_token" ]; then
+        auth_token=$(openssl rand -hex 16 2>/dev/null || echo "serv00-$(date +%s)")
+    fi
+
+    # 创建配置文件
+    cat > frps.ini << EOF
+[common]
+# frps 监听端口
+bind_port = $bind_port
+
+# dashboard 配置
+dashboard_port = $dashboard_port
+dashboard_user = $dashboard_user
+dashboard_pwd = $dashboard_pwd
+
+# 认证配置
+token = $auth_token
+
+# 日志配置
+log_file = ./frps.log
+log_level = info
+log_max_days = 3
+
+# 其他配置
+max_clients = 10
+max_ports_per_client = 5
+
+# 允许的端口范围（根据 serv00 限制调整）
+allow_ports = 10000-65535
+EOF
+
+    # 创建启动脚本
+    cat > start.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+echo "启动 frps 服务..."
+echo "配置文件: $(pwd)/frps.ini"
+echo "日志文件: $(pwd)/frps.log"
+echo "Dashboard: http://$(hostname):7500"
+echo "认证 token: $(grep '^token' frps.ini | cut -d'=' -f2 | tr -d ' ')"
+echo "----------------------------------------"
+./frps -c frps.ini
+EOF
+
+    chmod +x start.sh
+
+    echo -e "${GREEN}✓ frps 配置完成${NC}"
+    echo
+    echo -e "${WHITE}配置信息:${NC}"
+    echo -e "  监听端口: $bind_port"
+    echo -e "  Dashboard: http://$(hostname):$dashboard_port"
+    echo -e "  用户名: $dashboard_user"
+    echo -e "  密码: $dashboard_pwd"
+    echo -e "  Token: $auth_token"
+    echo
+    echo -e "${YELLOW}重要提醒:${NC}"
+    echo -e "  1. 请确保端口 $bind_port 和 $dashboard_port 在 serv00 允许范围内"
+    echo -e "  2. 记住 token，客户端连接时需要使用"
+    echo -e "  3. 可以通过 Dashboard 监控连接状态"
+    echo
 }
 
 # 配置管理菜单
