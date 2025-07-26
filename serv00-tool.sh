@@ -389,19 +389,17 @@ app_management_menu() {
     while true; do
         clear
         show_banner
-        echo -e "${PURPLE}=== 应用管理 ===${NC}"
-        echo "1. 创建新应用"
-        echo "2. 列出所有应用"
-        echo "3. 启动应用"
-        echo "4. 停止应用"
-        echo "5. 查看应用状态"
-        echo "6. 删除应用"
-        echo "7. 应用日志"
-        echo "8. 安装 frps 服务"
-        echo "9. frps 管理"
-        echo "0. 返回主菜单"
+        echo -e "${PURPLE}=== 🚀 应用管理 ===${NC}"
+        echo "1. 📱 创建新应用"
+        echo "2. 📋 列出所有应用"
+        echo "3. ▶️  启动应用"
+        echo "4. ⏹️  停止应用"
+        echo "5. 📊 查看应用状态"
+        echo "6. 🗑️  删除应用"
+        echo "7. 📄 查看应用日志"
+        echo "0. 🔙 返回主菜单"
         echo
-        read -p "请选择操作 [0-9]: " choice
+        read -p "请选择操作 [0-7]: " choice
 
         case $choice in
             1) create_new_app ;;
@@ -411,8 +409,6 @@ app_management_menu() {
             5) show_app_status ;;
             6) delete_app ;;
             7) show_app_logs ;;
-            8) install_frps ;;
-            9) frps_management_menu ;;
             0) break ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
@@ -1391,17 +1387,17 @@ frps_management_menu() {
     while true; do
         clear
         show_banner
-        echo -e "${PURPLE}=== frps 服务管理 ===${NC}"
-        echo "1. 查看 frps 状态"
-        echo "2. 启动 frps 服务"
-        echo "3. 停止 frps 服务"
-        echo "4. 重启 frps 服务"
-        echo "5. 查看 frps 日志"
-        echo "6. 编辑配置文件"
-        echo "7. 查看配置信息"
-        echo "8. 测试开机自启"
-        echo "9. 卸载 frps"
-        echo "0. 返回上级菜单"
+        echo -e "${PURPLE}=== 🎛️  frps 服务管理 ===${NC}"
+        echo "1. 📊 查看服务状态"
+        echo "2. ▶️  启动服务"
+        echo "3. ⏹️  停止服务"
+        echo "4. 🔄 重启服务"
+        echo "5. 📄 查看日志"
+        echo "6. ✏️  编辑配置"
+        echo "7. ℹ️  配置信息"
+        echo "8. 🔧 测试自启"
+        echo "9. 🗑️  卸载服务"
+        echo "0. 🔙 返回上级"
         echo
         read -p "请选择操作 [0-9]: " choice
 
@@ -1483,16 +1479,78 @@ start_frps_service() {
     fi
 
     cd "$frps_dir"
-    echo -e "${YELLOW}启动 frps 服务...${NC}"
-    screen -dmS "frps" bash -c "cd '$frps_dir' && ./frps -c frps.toml"
 
-    sleep 2
+    # 检查配置文件
+    if [ ! -f "frps.toml" ]; then
+        echo -e "${RED}✗ 配置文件 frps.toml 不存在${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 检查可执行文件权限
+    if [ ! -x "frps" ]; then
+        echo -e "${YELLOW}设置 frps 执行权限...${NC}"
+        chmod +x frps
+    fi
+
+    # 测试配置文件语法
+    echo -e "${YELLOW}检查配置文件语法...${NC}"
+    if ! ./frps verify -c frps.toml >/dev/null 2>&1; then
+        echo -e "${RED}✗ 配置文件语法错误${NC}"
+        echo -e "${YELLOW}尝试修复配置文件...${NC}"
+
+        # 检查端口配置
+        local bind_port=$(grep 'bindPort.*=' frps.toml | cut -d'=' -f2 | tr -d ' ')
+        local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
+
+        if [ -z "$bind_port" ] || [ -z "$web_port" ]; then
+            echo -e "${RED}✗ 端口配置缺失，请重新配置${NC}"
+            read -p "按回车键继续..."
+            return
+        fi
+    fi
+
+    echo -e "${YELLOW}启动 frps 服务...${NC}"
+    echo -e "${WHITE}配置文件: $(pwd)/frps.toml${NC}"
+    echo -e "${WHITE}日志文件: $(pwd)/frps.log${NC}"
+
+    # 启动服务并捕获输出
+    screen -dmS "frps" bash -c "cd '$frps_dir' && ./frps -c frps.toml 2>&1 | tee -a startup.log"
+
+    # 等待启动
+    echo -e "${YELLOW}等待服务启动...${NC}"
+    sleep 3
+
+    # 检查启动状态
     if screen -list | grep -q "frps"; then
         echo -e "${GREEN}✓ frps 启动成功${NC}"
         local web_port=$(grep 'port.*=' frps.toml | head -1 | cut -d'=' -f2 | tr -d ' ')
         echo -e "${WHITE}Dashboard: http://$(hostname):$web_port${NC}"
+
+        # 显示最近的日志
+        if [ -f "frps.log" ]; then
+            echo -e "${BLUE}最近日志:${NC}"
+            tail -5 frps.log 2>/dev/null || echo "暂无日志"
+        fi
     else
         echo -e "${RED}✗ frps 启动失败${NC}"
+
+        # 显示错误信息
+        if [ -f "startup.log" ]; then
+            echo -e "${YELLOW}启动错误信息:${NC}"
+            tail -10 startup.log
+        fi
+
+        if [ -f "frps.log" ]; then
+            echo -e "${YELLOW}服务日志:${NC}"
+            tail -10 frps.log
+        fi
+
+        echo -e "${BLUE}可能的解决方案:${NC}"
+        echo -e "1. 检查端口是否被占用"
+        echo -e "2. 检查端口是否在 serv00 允许范围内"
+        echo -e "3. 检查配置文件语法"
+        echo -e "4. 查看完整日志: cat $frps_dir/frps.log"
     fi
 
     read -p "按回车键继续..."
@@ -1754,6 +1812,254 @@ uninstall_frps() {
     rm -rf "$frps_dir"
 
     echo -e "${GREEN}✓ frps 卸载完成${NC}"
+    read -p "按回车键继续..."
+}
+
+# 创建 frp 客户端应用（简化版）
+create_frp_client_app() {
+    echo -e "${BLUE}=== 创建 frp 客户端 ===${NC}"
+
+    read -p "请输入客户端名称: " app_name
+    if [ -z "$app_name" ]; then
+        echo -e "${RED}客户端名称不能为空${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 检查应用是否已存在
+    if [ -d "$HOME/apps/$app_name" ]; then
+        echo -e "${RED}应用 $app_name 已存在${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    create_frpc_app "$app_name"
+}
+
+# frp 状态总览
+show_frp_overview() {
+    echo -e "${BLUE}=== 📊 frp 状态总览 ===${NC}"
+    echo
+
+    # frps 服务端状态
+    echo -e "${WHITE}🖥️  frps 服务端:${NC}"
+    local frps_dir="$HOME/apps/frps"
+    if [ -d "$frps_dir" ] && [ -f "$frps_dir/frps" ]; then
+        echo -e "  状态: ${GREEN}已安装${NC}"
+        if screen -list | grep -q "frps"; then
+            echo -e "  运行: ${GREEN}运行中${NC}"
+            local web_port=$(grep 'port.*=' "$frps_dir/frps.toml" | head -1 | cut -d'=' -f2 | tr -d ' ')
+            echo -e "  Dashboard: http://$(hostname):$web_port"
+        else
+            echo -e "  运行: ${RED}已停止${NC}"
+        fi
+    else
+        echo -e "  状态: ${YELLOW}未安装${NC}"
+    fi
+    echo
+
+    # frp 客户端状态
+    echo -e "${WHITE}📱 frp 客户端:${NC}"
+    local client_count=0
+    local running_count=0
+
+    if [ -d "$HOME/apps" ]; then
+        for app_dir in "$HOME/apps"/*; do
+            if [ -d "$app_dir" ] && [ -f "$app_dir/.app-config" ]; then
+                source "$app_dir/.app-config"
+                if [ "$APP_TYPE" = "frpc" ]; then
+                    ((client_count++))
+                    if screen -list | grep -q "$APP_NAME"; then
+                        ((running_count++))
+                    fi
+                fi
+            fi
+        done
+    fi
+
+    echo -e "  总数: $client_count 个"
+    echo -e "  运行中: ${GREEN}$running_count${NC} 个"
+    echo -e "  已停止: ${RED}$((client_count - running_count))${NC} 个"
+    echo
+
+    # 端口使用情况
+    echo -e "${WHITE}🌐 端口使用:${NC}"
+    if command -v sockstat >/dev/null 2>&1; then
+        local listening_ports=$(sockstat -l | grep "$(whoami)" | wc -l)
+        echo -e "  监听端口: $listening_ports 个"
+    else
+        echo -e "  监听端口: 无法检测"
+    fi
+    echo
+
+    read -p "按回车键继续..."
+}
+
+# frp 使用指南
+show_frp_guide() {
+    clear
+    show_banner
+    echo -e "${BLUE}=== 📖 frp 使用指南 ===${NC}"
+    echo
+    echo -e "${WHITE}🎯 什么是 frp?${NC}"
+    echo "frp 是一个专注于内网穿透的高性能的反向代理应用，支持 TCP、UDP、HTTP、HTTPS 等多种协议。"
+    echo
+    echo -e "${WHITE}🏗️  基本架构:${NC}"
+    echo "  frps (服务端) ←→ frpc (客户端)"
+    echo "  服务端运行在有公网 IP 的机器上（如 serv00）"
+    echo "  客户端运行在需要被访问的内网机器上"
+    echo
+    echo -e "${WHITE}📋 使用步骤:${NC}"
+    echo "  1. 在 serv00 上安装 frps 服务端"
+    echo "  2. 在内网机器上安装 frpc 客户端"
+    echo "  3. 配置客户端连接到服务端"
+    echo "  4. 通过服务端访问内网服务"
+    echo
+    echo -e "${WHITE}🔧 常用场景:${NC}"
+    echo "  • SSH 访问: 将内网 SSH (22端口) 映射到公网"
+    echo "  • Web 服务: 将内网 Web 服务映射到公网"
+    echo "  • 远程桌面: 将 RDP/VNC 映射到公网"
+    echo "  • 文件服务: 将 FTP/SMB 等服务映射到公网"
+    echo
+    echo -e "${WHITE}⚠️  serv00 注意事项:${NC}"
+    echo "  • 使用端口范围: 10000-65535"
+    echo "  • 注意资源限制: CPU、内存、带宽"
+    echo "  • 遵守使用条款: 不要用于违法用途"
+    echo
+    echo -e "${WHITE}🔗 相关链接:${NC}"
+    echo "  • 官方文档: https://gofrp.org/zh-cn/docs/"
+    echo "  • GitHub: https://github.com/fatedier/frp"
+    echo
+    read -p "按回车键返回..."
+}
+
+# 网络连接测试
+network_connectivity_test() {
+    echo -e "${BLUE}=== 🌐 网络连接测试 ===${NC}"
+    echo
+
+    # 测试基本网络连接
+    echo -e "${YELLOW}测试外网连接...${NC}"
+    if ping -c 3 8.8.8.8 >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ 外网连接正常${NC}"
+    else
+        echo -e "${RED}✗ 外网连接失败${NC}"
+    fi
+
+    # 测试 DNS 解析
+    echo -e "${YELLOW}测试 DNS 解析...${NC}"
+    if nslookup google.com >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ DNS 解析正常${NC}"
+    else
+        echo -e "${RED}✗ DNS 解析失败${NC}"
+    fi
+
+    # 测试 HTTP 连接
+    echo -e "${YELLOW}测试 HTTP 连接...${NC}"
+    if command -v curl >/dev/null 2>&1; then
+        if curl -s --connect-timeout 5 http://httpbin.org/ip >/dev/null; then
+            echo -e "${GREEN}✓ HTTP 连接正常${NC}"
+        else
+            echo -e "${RED}✗ HTTP 连接失败${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ curl 未安装，跳过 HTTP 测试${NC}"
+    fi
+
+    # 测试 HTTPS 连接
+    echo -e "${YELLOW}测试 HTTPS 连接...${NC}"
+    if command -v curl >/dev/null 2>&1; then
+        if curl -s --connect-timeout 5 https://httpbin.org/ip >/dev/null; then
+            echo -e "${GREEN}✓ HTTPS 连接正常${NC}"
+        else
+            echo -e "${RED}✗ HTTPS 连接失败${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ curl 未安装，跳过 HTTPS 测试${NC}"
+    fi
+
+    echo
+    read -p "按回车键继续..."
+}
+
+# 资源使用情况检查
+resource_usage_check() {
+    echo -e "${BLUE}=== 📊 资源使用情况 ===${NC}"
+    echo
+
+    # CPU 使用情况
+    echo -e "${WHITE}💻 CPU 使用情况:${NC}"
+    if command -v top >/dev/null 2>&1; then
+        top -n 1 | grep "CPU:" | head -1
+    else
+        echo "无法获取 CPU 信息"
+    fi
+    echo
+
+    # 内存使用情况
+    echo -e "${WHITE}🧠 内存使用情况:${NC}"
+    if command -v top >/dev/null 2>&1; then
+        top -n 1 | grep "Mem:" | head -1
+    else
+        echo "无法获取内存信息"
+    fi
+    echo
+
+    # 磁盘使用情况
+    echo -e "${WHITE}💾 磁盘使用情况:${NC}"
+    df -h ~ | tail -1 | awk '{printf "主目录: %s 已用 / %s 总计 (%s 使用率)\n", $3, $2, $5}'
+    echo
+
+    # 用户进程数
+    echo -e "${WHITE}⚙️  用户进程:${NC}"
+    local process_count=$(ps aux | grep "^$(whoami)" | wc -l)
+    echo "当前用户进程数: $process_count"
+    echo
+
+    read -p "按回车键继续..."
+}
+
+# 服务进程检查
+service_process_check() {
+    echo -e "${BLUE}=== 🔧 服务进程检查 ===${NC}"
+    echo
+
+    echo -e "${WHITE}Screen 会话:${NC}"
+    if command -v screen >/dev/null 2>&1; then
+        screen -ls 2>/dev/null || echo "没有运行中的 screen 会话"
+    else
+        echo "screen 未安装"
+    fi
+    echo
+
+    echo -e "${WHITE}用户进程 (前10个):${NC}"
+    echo -e "${YELLOW}PID\t%CPU\t%MEM\tCOMMAND${NC}"
+    ps aux | grep "^$(whoami)" | head -10 | awk '{printf "%s\t%s\t%s\t%s\n", $2, $3, $4, $11}'
+    echo
+
+    read -p "按回车键继续..."
+}
+
+# 磁盘空间检查
+disk_space_check() {
+    echo -e "${BLUE}=== 📁 磁盘空间检查 ===${NC}"
+    echo
+
+    echo -e "${WHITE}主目录空间:${NC}"
+    df -h ~ | tail -1 | awk '{printf "路径: %s\n大小: %s\n已用: %s\n可用: %s\n使用率: %s\n", $6, $2, $3, $4, $5}'
+    echo
+
+    echo -e "${WHITE}大文件检查 (>10MB):${NC}"
+    find ~ -type f -size +10M 2>/dev/null | head -10 | while read file; do
+        size=$(du -h "$file" 2>/dev/null | cut -f1)
+        echo "  $size  $file"
+    done
+    echo
+
+    echo -e "${WHITE}目录大小统计:${NC}"
+    du -sh ~/apps ~/bin ~/.serv00-tool 2>/dev/null | sort -hr
+    echo
+
     read -p "按回车键继续..."
 }
 
@@ -2058,6 +2364,62 @@ quick_install() {
     echo
 }
 
+# frp 内网穿透主菜单
+frp_main_menu() {
+    while true; do
+        clear
+        show_banner
+        echo -e "${PURPLE}=== 🌐 frp 内网穿透 ===${NC}"
+        echo "1. 📥 安装 frps 服务端"
+        echo "2. 🎛️  frps 服务管理"
+        echo "3. 📱 创建 frp 客户端"
+        echo "4. 📊 frp 状态总览"
+        echo "5. 📖 frp 使用指南"
+        echo "0. 🔙 返回主菜单"
+        echo
+        read -p "请选择操作 [0-5]: " choice
+
+        case $choice in
+            1) install_frps ;;
+            2) frps_management_menu ;;
+            3) create_frp_client_app ;;
+            4) show_frp_overview ;;
+            5) show_frp_guide ;;
+            0) break ;;
+            *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
+        esac
+    done
+}
+
+# 系统诊断菜单
+system_diagnostic_menu() {
+    while true; do
+        clear
+        show_banner
+        echo -e "${PURPLE}=== 🔍 系统诊断 ===${NC}"
+        echo "1. 🔐 检查 binexec 状态"
+        echo "2. 🐳 检查容器支持"
+        echo "3. 🌐 网络连接测试"
+        echo "4. 📊 资源使用情况"
+        echo "5. 🔧 服务进程检查"
+        echo "6. 📁 磁盘空间检查"
+        echo "0. 🔙 返回主菜单"
+        echo
+        read -p "请选择操作 [0-6]: " choice
+
+        case $choice in
+            1) clear; check_binexec; read -p "按回车键继续..." ;;
+            2) clear; check_container_support; read -p "按回车键继续..." ;;
+            3) network_connectivity_test ;;
+            4) resource_usage_check ;;
+            5) service_process_check ;;
+            6) disk_space_check ;;
+            0) break ;;
+            *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
+        esac
+    done
+}
+
 # 主菜单
 main_menu() {
     while true; do
@@ -2070,29 +2432,27 @@ main_menu() {
         echo
 
         echo -e "${WHITE}=== 主菜单 ===${NC}"
-        echo "1. 系统信息"
-        echo "2. 工具安装"
-        echo "3. 服务管理"
-        echo "4. 应用管理"
-        echo "5. 配置管理"
-        echo "6. 检查 binexec 状态"
-        echo "7. 容器支持检查"
-        echo "8. 查看日志"
-        echo "9. 帮助信息"
-        echo "0. 退出"
+        echo "1. 📊 系统信息"
+        echo "2. 🛠️  工具安装"
+        echo "3. 🚀 应用管理"
+        echo "4. 🔧 系统配置"
+        echo "5. 🌐 frp 内网穿透"
+        echo "6. 🔍 系统诊断"
+        echo "7. 📋 查看日志"
+        echo "8. ❓ 帮助信息"
+        echo "0. 🚪 退出"
         echo
-        read -p "请选择操作 [0-9]: " choice
+        read -p "请选择操作 [0-8]: " choice
 
         case $choice in
             1) clear; show_system_info; read -p "按回车键继续..." ;;
             2) install_tools_menu ;;
-            3) service_management_menu ;;
-            4) app_management_menu ;;
-            5) config_menu ;;
-            6) clear; check_binexec; read -p "按回车键继续..." ;;
-            7) clear; check_container_support; read -p "按回车键继续..." ;;
-            8) show_logs ;;
-            9) show_help ;;
+            3) app_management_menu ;;
+            4) config_menu ;;
+            5) frp_main_menu ;;
+            6) system_diagnostic_menu ;;
+            7) show_logs ;;
+            8) show_help ;;
             0) echo -e "${GREEN}感谢使用 Serv00 工具箱！${NC}"; exit 0 ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
