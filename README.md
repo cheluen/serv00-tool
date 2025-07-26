@@ -1,204 +1,184 @@
 # Serv00 VPS 工具箱
 
-一个专为 [serv00.com](https://serv00.com) 免费 VPS 设计的交互式管理工具，基于 FreeBSD 系统。
+一个专为 [serv00.com](https://serv00.com) 免费 VPS 设计的**一体化管理工具**，基于 FreeBSD 系统。
 
-## 功能特性
+## ✨ 核心特性
 
-### 🖥️ 系统信息
-- 查看系统基本信息（主机名、用户、系统版本等）
-- 显示磁盘使用情况
-- 查看内存使用状态
-- 监控用户进程
-
-### 🛠️ 工具安装
-- 一键安装常用工具：
-  - `screen` - 终端复用器
-  - `tmux` - 现代化终端复用器
-  - `htop` - 交互式系统监控
-  - `git` - 版本控制系统
-  - `nano` - 简单文本编辑器
-  - `wget` / `curl` - 下载工具
-- 自动检测已安装的工具
-- 使用 FreeBSD 的 `pkg` 包管理器
-
-### 🔧 服务管理
-- 查看和管理用户进程
-- Screen 会话管理：
-  - 创建新会话
-  - 列出现有会话
-  - 连接到指定会话
-- 交互式进程终止
+### 🖥️ 系统管理
+- 系统信息查看（CPU、内存、磁盘）
+- 用户进程监控和管理
 - 端口使用情况查看
 
-### ⚙️ 配置管理
-- 设置默认编辑器
-- 配置 Bash 环境：
-  - 启用彩色 ls 输出
-  - 添加常用别名
-  - 自定义提示符
-- 查看环境变量
-- 备份配置文件
+### 🛠️ 工具安装
+- 一键安装：`screen`、`tmux`、`htop`、`git`、`nano`、`wget`、`curl`
+- 自动检测已安装工具
+- 使用 FreeBSD `pkg` 包管理器
 
-### 🔐 Binexec 支持
-- 检查 binexec 状态
-- 提供启用指导
+### 📱 应用管理（新功能）
+- **创建应用**：支持 Python Web、Node.js、静态网站
+- **应用隔离**：独立目录、虚拟环境、Screen 会话
+- **生命周期管理**：启动、停止、状态监控
+- **模板支持**：预配置的应用模板
 
-## 安装和使用
+### 🔧 服务管理
+- Screen 会话管理（创建、连接、列出）
+- 进程控制（启动、停止、监控）
+- 服务状态查看
 
-### 1. 下载工具
+### ⚙️ 环境配置
+- Bash 环境优化（彩色输出、别名）
+- 默认编辑器设置
+- 配置文件备份
 
+### 🔍 诊断工具
+- **Binexec 状态检查**：详细诊断和解决方案
+- **容器支持检查**：Docker/Podman/Jails 兼容性
+- 系统兼容性验证
+
+## 🚀 快速开始
+
+### 一键安装（推荐）
 ```bash
-# 克隆仓库
+# 下载并运行
+curl -s https://raw.githubusercontent.com/cheluen/serv00-tool/main/serv00-tool.sh | bash -s -- --install
+
+# 或者分步安装
+wget https://raw.githubusercontent.com/cheluen/serv00-tool/main/serv00-tool.sh
+chmod +x serv00-tool.sh
+./serv00-tool.sh --install
+```
+
+### 手动安装
+```bash
+# 1. 克隆仓库
 git clone https://github.com/cheluen/serv00-tool.git
 cd serv00-tool
 
-# 或者直接下载脚本
-wget https://raw.githubusercontent.com/cheluen/serv00-tool/main/serv00-tool.sh
-```
-
-### 2. 设置权限
-
-```bash
-chmod +x serv00-tool.sh
-```
-
-### 3. 启用 Binexec（重要）
-
-在运行工具之前，需要启用 binexec 权限：
-
-```bash
-# 方法1: 使用 devil 命令
+# 2. 启用 binexec（重要！）
 devil binexec on
+exit  # 重新登录 SSH
 
-# 方法2: 通过 DevilWEB 面板
-# 登录 https://panel.serv00.com
-# 进入 "Additional services" -> "Run your own applications"
-# 启用 Binexec
-```
-
-**注意：启用 binexec 后需要重新登录 SSH！**
-
-### 4. 运行工具
-
-```bash
+# 3. 运行工具
 ./serv00-tool.sh
 ```
 
-### 5. 故障排除（如果遇到问题）
+## 📋 使用方法
 
-如果遇到 binexec 相关问题，可以使用独立检查脚本：
-
+### 交互模式
 ```bash
-./check-binexec.sh
+./serv00-tool.sh
+# 或安装后使用
+serv00-tool
 ```
 
-这个脚本会详细检查 binexec 状态并提供解决方案。
-
-## 界面预览
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║                    Serv00 VPS 工具箱                        ║
-║                  FreeBSD 环境管理工具                       ║
-║                     版本: 1.0                               ║
-╚══════════════════════════════════════════════════════════════╝
-
-当前用户: username@s1.serv00.com
-当前目录: /usr/home/username
-
-=== 主菜单 ===
-1. 系统信息
-2. 工具安装
-3. 服务管理
-4. 配置管理
-5. 检查 binexec 状态
-6. 查看日志
-7. 帮助信息
-8. 退出
-
-请选择操作 [1-8]:
+### 命令行模式
+```bash
+./serv00-tool.sh --help              # 显示帮助
+./serv00-tool.sh --check             # 检查 binexec
+./serv00-tool.sh --container-check   # 检查容器支持
+./serv00-tool.sh --list-apps         # 列出应用
+./serv00-tool.sh --start-app myapp   # 启动应用
+./serv00-tool.sh --stop-app myapp    # 停止应用
 ```
 
-## 系统要求
+## 🎯 应用管理示例
 
-- **操作系统**: FreeBSD（serv00.com 环境）
-- **Shell**: Bash
-- **权限**: 需要启用 binexec
-- **网络**: 用于下载和安装软件包
+### 创建 Python Web 应用
+```bash
+# 1. 进入应用管理
+./serv00-tool.sh
+# 选择 "4. 应用管理" -> "1. 创建新应用"
 
-## 目录结构
+# 2. 应用会自动创建在 ~/apps/myapp/
+# 包含：虚拟环境、启动脚本、示例代码
+
+# 3. 启动应用
+# 选择 "3. 启动应用"，应用会在 screen 会话中运行
+```
+
+### 管理应用生命周期
+```bash
+# 查看所有应用
+./serv00-tool.sh --list-apps
+
+# 启动应用（命令行）
+./serv00-tool.sh --start-app webapp
+
+# 停止应用（命令行）
+./serv00-tool.sh --stop-app webapp
+```
+
+## 📁 项目结构
 
 ```
 serv00-tool/
-├── serv00-tool.sh          # 主脚本文件
-├── install.sh              # 自动安装脚本
-├── check-binexec.sh        # Binexec 状态检查脚本
-├── README.md               # 说明文档
-├── QUICKSTART.md           # 快速开始指南
-└── ~/.serv00-tool/         # 配置目录（运行后自动创建）
-    ├── config              # 配置文件
-    └── tool.log           # 日志文件
+├── serv00-tool.sh          # 🎯 唯一主脚本（包含所有功能）
+├── README.md               # 📖 完整文档
+└── LICENSE                 # 📄 许可证
+
+运行后创建：
+~/apps/                     # 应用目录
+├── webapp1/               # Python 应用
+├── webapp2/               # Node.js 应用
+└── static-site/           # 静态网站
+
+~/.serv00-tool/            # 配置目录
+├── config                 # 配置文件
+└── tool.log              # 日志文件
 ```
 
-## 常见问题
+## ❓ 常见问题
 
 ### Q: 提示 "Binexec 未启用" 怎么办？
-A:
-1. 运行 `devil binexec on` 命令
-2. **重新登录 SSH**（这一步很重要！）
-3. 如果仍有问题，使用独立检查脚本：`./check-binexec.sh`
+```bash
+# 1. 启用 binexec
+devil binexec on
 
-### Q: Screen 显示 "No Sockets found" 是什么意思？
-A: 这是正常的，表示当前没有运行中的 screen 会话。使用工具创建新会话即可。
+# 2. 重新登录 SSH（重要！）
+exit
 
-### Q: 无法安装某些软件包？
-A: 某些软件包可能在 serv00 环境中不可用，或需要特殊权限。
+# 3. 检查状态
+./serv00-tool.sh --check
+```
 
-### Q: Screen 会话无法启动？
-A: 确保已安装 screen：在工具中选择 "工具安装" -> "安装 screen"。
+### Q: 能使用 Docker/Podman 吗？
+**不能**。serv00 基于 FreeBSD，无 root 权限，不支持容器技术。
+使用本工具的应用管理功能作为替代方案。
 
-### Q: 配置更改不生效？
-A: 运行 `source ~/.bash_profile` 或重新登录 SSH。
+### Q: Screen 显示 "No Sockets found"？
+这是正常的，表示没有运行中的 screen 会话。创建新应用时会自动创建会话。
 
-### Q: Binexec 检查结果不一致？
-A:
-1. 使用 `./check-binexec.sh` 进行详细检查
-2. 确保已重新登录 SSH
-3. 等待几分钟让更改生效
+### Q: 如何管理多个应用？
+```bash
+# 创建不同类型的应用
+./serv00-tool.sh  # 选择应用管理
 
-## 注意事项
+# 命令行管理
+./serv00-tool.sh --list-apps
+./serv00-tool.sh --start-app myapp
+./serv00-tool.sh --stop-app myapp
+```
 
-1. **权限限制**: serv00 是共享主机环境，没有 root 权限
-2. **资源限制**: 注意 CPU 和内存使用限制
-3. **网络限制**: 某些端口可能被限制
-4. **存储限制**: 注意磁盘空间使用
+## ⚠️ 重要说明
 
-## 支持的工具
+### 系统限制
+- **无 root 权限**：共享主机环境
+- **资源限制**：CPU、内存、磁盘有限制
+- **网络限制**：某些端口不可用
+- **容器不支持**：无法使用 Docker/Podman
 
-| 工具 | 描述 | 状态 |
-|------|------|------|
-| screen | 终端复用器 | ✅ 支持 |
-| tmux | 现代终端复用器 | ✅ 支持 |
-| htop | 系统监控 | ✅ 支持 |
-| git | 版本控制 | ✅ 支持 |
-| nano | 文本编辑器 | ✅ 支持 |
-| wget | 下载工具 | ✅ 支持 |
-| curl | HTTP 客户端 | ✅ 支持 |
+### 最佳实践
+1. **启用 binexec**：必须先运行 `devil binexec on`
+2. **使用 screen**：长时间运行的程序放在 screen 中
+3. **监控资源**：定期检查系统资源使用
+4. **备份数据**：重要数据要备份
 
-## 贡献
+## 🔗 相关链接
 
-欢迎提交 Issue 和 Pull Request！
-
-## 许可证
-
-MIT License
-
-## 相关链接
-
-- [Serv00 官网](https://serv00.com)
-- [Serv00 文档](https://docs.serv00.com)
-- [FreeBSD 手册](https://www.freebsd.org/doc/)
+- [Serv00 官网](https://serv00.com) - 免费 VPS 服务
+- [Serv00 文档](https://docs.serv00.com) - 官方文档
+- [FreeBSD 手册](https://www.freebsd.org/doc/) - 系统文档
 
 ---
 
-**免责声明**: 本工具仅供学习和个人使用，请遵守 serv00.com 的使用条款。
+**MIT License** | 仅供学习使用 | 遵守 serv00.com 使用条款

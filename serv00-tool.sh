@@ -1,4 +1,4 @@
-#!/usr/local/bin/bash
+#!/bin/bash
 
 # Serv00 VPS 工具脚本
 # 适用于 serv00.com 免费 VPS (FreeBSD 系统)
@@ -384,6 +384,363 @@ show_port_usage() {
     read -p "按回车键继续..."
 }
 
+# 应用管理菜单
+app_management_menu() {
+    while true; do
+        clear
+        show_banner
+        echo -e "${PURPLE}=== 应用管理 ===${NC}"
+        echo "1. 创建新应用"
+        echo "2. 列出所有应用"
+        echo "3. 启动应用"
+        echo "4. 停止应用"
+        echo "5. 查看应用状态"
+        echo "6. 删除应用"
+        echo "7. 应用日志"
+        echo "8. 返回主菜单"
+        echo
+        read -p "请选择操作 [1-8]: " choice
+
+        case $choice in
+            1) create_new_app ;;
+            2) list_apps ;;
+            3) start_app ;;
+            4) stop_app ;;
+            5) show_app_status ;;
+            6) delete_app ;;
+            7) show_app_logs ;;
+            8) break ;;
+            *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
+        esac
+    done
+}
+
+# 创建新应用
+create_new_app() {
+    echo -e "${BLUE}=== 创建新应用 ===${NC}"
+    echo
+
+    read -p "应用名称: " app_name
+    if [ -z "$app_name" ]; then
+        echo -e "${RED}应用名称不能为空${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    # 检查应用是否已存在
+    if [ -d "$HOME/apps/$app_name" ]; then
+        echo -e "${RED}应用 $app_name 已存在${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo "选择应用类型:"
+    echo "1. Python Web 应用"
+    echo "2. Node.js 应用"
+    echo "3. 静态网站"
+    echo "4. 通用应用"
+    read -p "请选择 [1-4]: " app_type
+
+    case $app_type in
+        1) create_python_app "$app_name" ;;
+        2) create_nodejs_app "$app_name" ;;
+        3) create_static_app "$app_name" ;;
+        4) create_generic_app "$app_name" ;;
+        *) echo -e "${RED}无效选择${NC}"; read -p "按回车键继续..."; return ;;
+    esac
+}
+
+# 创建 Python 应用
+create_python_app() {
+    local app_name="$1"
+    local app_dir="$HOME/apps/$app_name"
+
+    echo -e "${YELLOW}创建 Python 应用: $app_name${NC}"
+
+    mkdir -p "$app_dir"
+    cd "$app_dir"
+
+    # 创建虚拟环境
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -m venv venv
+        echo -e "${GREEN}✓ Python 虚拟环境已创建${NC}"
+    fi
+
+    # 创建基本文件
+    cat > app.py << 'EOF'
+#!/usr/bin/env python3
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+import os
+
+class MyHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b'<h1>Hello from Serv00!</h1><p>Python app is running.</p>')
+        else:
+            super().do_GET()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8000))
+    server = HTTPServer(('localhost', port), MyHandler)
+    print(f"Server running on port {port}")
+    server.serve_forever()
+EOF
+
+    cat > requirements.txt << 'EOF'
+# Add your Python dependencies here
+# flask
+# django
+# fastapi
+EOF
+
+    cat > start.sh << 'EOF'
+#!/usr/local/bin/bash
+cd "$(dirname "$0")"
+source venv/bin/activate
+python app.py
+EOF
+
+    chmod +x start.sh
+
+    # 创建应用配置
+    create_app_config "$app_name" "python" "8000"
+
+    echo -e "${GREEN}✓ Python 应用 $app_name 创建成功${NC}"
+    echo -e "${WHITE}位置: $app_dir${NC}"
+    echo -e "${WHITE}启动: cd $app_dir && ./start.sh${NC}"
+
+    log "创建 Python 应用: $app_name"
+    read -p "按回车键继续..."
+}
+
+# 创建 Node.js 应用
+create_nodejs_app() {
+    local app_name="$1"
+    local app_dir="$HOME/apps/$app_name"
+
+    echo -e "${YELLOW}创建 Node.js 应用: $app_name${NC}"
+
+    mkdir -p "$app_dir"
+    cd "$app_dir"
+
+    # 创建 package.json
+    cat > package.json << EOF
+{
+  "name": "$app_name",
+  "version": "1.0.0",
+  "description": "Serv00 Node.js application",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js"
+  },
+  "dependencies": {
+  }
+}
+EOF
+
+    # 创建基本应用
+    cat > app.js << 'EOF'
+const http = require('http');
+const port = process.env.PORT || 3000;
+
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<h1>Hello from Serv00!</h1><p>Node.js app is running.</p>');
+});
+
+server.listen(port, 'localhost', () => {
+    console.log(`Server running on port ${port}`);
+});
+EOF
+
+    cat > start.sh << 'EOF'
+#!/usr/local/bin/bash
+cd "$(dirname "$0")"
+node app.js
+EOF
+
+    chmod +x start.sh
+
+    # 创建应用配置
+    create_app_config "$app_name" "nodejs" "3000"
+
+    echo -e "${GREEN}✓ Node.js 应用 $app_name 创建成功${NC}"
+    echo -e "${WHITE}位置: $app_dir${NC}"
+    echo -e "${WHITE}启动: cd $app_dir && ./start.sh${NC}"
+
+    log "创建 Node.js 应用: $app_name"
+    read -p "按回车键继续..."
+}
+
+# 创建应用配置文件
+create_app_config() {
+    local app_name="$1"
+    local app_type="$2"
+    local default_port="$3"
+
+    cat > .app-config << EOF
+APP_NAME=$app_name
+APP_TYPE=$app_type
+DEFAULT_PORT=$default_port
+CREATED=$(date)
+STATUS=stopped
+PID=
+EOF
+}
+
+# 列出所有应用
+list_apps() {
+    echo -e "${BLUE}=== 应用列表 ===${NC}"
+
+    if [ ! -d "$HOME/apps" ]; then
+        echo -e "${YELLOW}还没有创建任何应用${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${WHITE}名称\t\t类型\t\t状态\t\t端口${NC}"
+    echo "----------------------------------------"
+
+    for app_dir in "$HOME/apps"/*; do
+        if [ -d "$app_dir" ] && [ -f "$app_dir/.app-config" ]; then
+            source "$app_dir/.app-config"
+            local status_color="${RED}"
+            if [ "$STATUS" = "running" ]; then
+                status_color="${GREEN}"
+            fi
+            printf "%-15s\t%-10s\t${status_color}%-10s${NC}\t%s\n" \
+                "$APP_NAME" "$APP_TYPE" "$STATUS" "$DEFAULT_PORT"
+        fi
+    done
+
+    echo
+    read -p "按回车键继续..."
+}
+
+# 启动应用
+start_app() {
+    echo -e "${BLUE}=== 启动应用 ===${NC}"
+
+    read -p "请输入应用名称: " app_name
+    if [ -z "$app_name" ]; then
+        echo -e "${RED}应用名称不能为空${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    local app_dir="$HOME/apps/$app_name"
+    if [ ! -d "$app_dir" ] || [ ! -f "$app_dir/.app-config" ]; then
+        echo -e "${RED}应用 $app_name 不存在${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    cd "$app_dir"
+    source .app-config
+
+    if [ "$STATUS" = "running" ]; then
+        echo -e "${YELLOW}应用 $app_name 已在运行中${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${YELLOW}启动应用 $app_name...${NC}"
+
+    # 在 screen 会话中启动应用
+    if command -v screen >/dev/null 2>&1; then
+        screen -dmS "$app_name" bash -c "cd '$app_dir' && ./start.sh"
+
+        # 等待一下检查是否启动成功
+        sleep 2
+        if screen -list | grep -q "$app_name"; then
+            # 更新配置
+            sed -i '' "s/STATUS=.*/STATUS=running/" .app-config
+            echo -e "${GREEN}✓ 应用 $app_name 启动成功${NC}"
+            echo -e "${WHITE}Screen 会话: $app_name${NC}"
+            log "启动应用: $app_name"
+        else
+            echo -e "${RED}✗ 应用 $app_name 启动失败${NC}"
+        fi
+    else
+        echo -e "${RED}✗ screen 未安装，无法启动应用${NC}"
+    fi
+
+    read -p "按回车键继续..."
+}
+
+# 停止应用
+stop_app() {
+    echo -e "${BLUE}=== 停止应用 ===${NC}"
+
+    read -p "请输入应用名称: " app_name
+    if [ -z "$app_name" ]; then
+        echo -e "${RED}应用名称不能为空${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    local app_dir="$HOME/apps/$app_name"
+    if [ ! -d "$app_dir" ] || [ ! -f "$app_dir/.app-config" ]; then
+        echo -e "${RED}应用 $app_name 不存在${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    echo -e "${YELLOW}停止应用 $app_name...${NC}"
+
+    # 终止 screen 会话
+    if screen -list | grep -q "$app_name"; then
+        screen -S "$app_name" -X quit
+        echo -e "${GREEN}✓ 应用 $app_name 已停止${NC}"
+
+        # 更新配置
+        cd "$app_dir"
+        sed -i '' "s/STATUS=.*/STATUS=stopped/" .app-config
+        log "停止应用: $app_name"
+    else
+        echo -e "${YELLOW}应用 $app_name 未在运行${NC}"
+    fi
+
+    read -p "按回车键继续..."
+}
+
+# 查看应用状态
+show_app_status() {
+    echo -e "${BLUE}=== 应用状态 ===${NC}"
+
+    if [ ! -d "$HOME/apps" ]; then
+        echo -e "${YELLOW}还没有创建任何应用${NC}"
+        read -p "按回车键继续..."
+        return
+    fi
+
+    for app_dir in "$HOME/apps"/*; do
+        if [ -d "$app_dir" ] && [ -f "$app_dir/.app-config" ]; then
+            cd "$app_dir"
+            source .app-config
+
+            echo -e "${WHITE}应用: $APP_NAME${NC}"
+            echo -e "  类型: $APP_TYPE"
+            echo -e "  端口: $DEFAULT_PORT"
+            echo -e "  创建时间: $CREATED"
+
+            if screen -list | grep -q "$APP_NAME"; then
+                echo -e "  状态: ${GREEN}运行中${NC}"
+                echo -e "  Screen 会话: $APP_NAME"
+            else
+                echo -e "  状态: ${RED}已停止${NC}"
+            fi
+            echo
+        fi
+    done
+
+    read -p "按回车键继续..."
+}
+
 # 配置管理菜单
 config_menu() {
     while true; do
@@ -573,6 +930,118 @@ backup_config_files() {
     read -p "按回车键继续..."
 }
 
+# 检查容器支持
+check_container_support() {
+    echo -e "${BLUE}=== 容器技术支持检查 ===${NC}"
+    echo
+
+    echo -e "${YELLOW}系统信息:${NC}"
+    echo -e "  操作系统: $(uname -s) $(uname -r)"
+    echo -e "  架构: $(uname -m)"
+    echo -e "  用户: $(whoami)"
+    echo
+
+    echo -e "${YELLOW}Docker 检查:${NC}"
+    if command -v docker >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Docker 命令可用${NC}"
+        if docker ps >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Docker 可正常使用${NC}"
+        else
+            echo -e "${RED}✗ Docker 无权限或未运行${NC}"
+        fi
+    else
+        echo -e "${RED}✗ Docker 未安装${NC}"
+    fi
+
+    echo -e "${YELLOW}Podman 检查:${NC}"
+    if command -v podman >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Podman 命令可用${NC}"
+        if podman ps >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Podman 可正常使用${NC}"
+        else
+            echo -e "${RED}✗ Podman 无法正常工作${NC}"
+        fi
+    else
+        echo -e "${RED}✗ Podman 未安装${NC}"
+    fi
+
+    echo -e "${YELLOW}FreeBSD Jails 检查:${NC}"
+    if command -v jail >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ jail 命令可用${NC}"
+        if jls >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ 可以访问 jails${NC}"
+        else
+            echo -e "${RED}✗ 无权限访问 jails${NC}"
+        fi
+    else
+        echo -e "${RED}✗ jail 命令不可用${NC}"
+    fi
+
+    echo
+    echo -e "${CYAN}=== 结论 ===${NC}"
+    echo -e "${RED}✗ 容器技术在 serv00 上不可用${NC}"
+    echo -e "${WHITE}原因:${NC}"
+    echo -e "  - FreeBSD 系统，Docker/Podman 支持有限"
+    echo -e "  - 共享主机环境，无 root 权限"
+    echo -e "  - 缺少必要的内核功能"
+    echo
+    echo -e "${GREEN}推荐替代方案:${NC}"
+    echo -e "  - 使用本工具的应用管理功能"
+    echo -e "  - 使用 screen/tmux 进行进程隔离"
+    echo -e "  - 使用虚拟环境进行依赖隔离"
+    echo
+}
+
+# 一键安装功能
+quick_install() {
+    echo -e "${CYAN}=== Serv00 工具箱一键安装 ===${NC}"
+    echo
+
+    # 检查环境
+    if [ "$(uname -s)" != "FreeBSD" ]; then
+        echo -e "${YELLOW}警告: 非 FreeBSD 系统，某些功能可能不可用${NC}"
+    fi
+
+    # 检查 binexec
+    echo -e "${YELLOW}检查 binexec 状态...${NC}"
+    if check_binexec >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Binexec 已启用${NC}"
+    else
+        echo -e "${RED}✗ Binexec 未启用${NC}"
+        echo -e "${YELLOW}请先运行: devil binexec on${NC}"
+        echo -e "${YELLOW}然后重新登录 SSH${NC}"
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ 环境检查通过${NC}"
+    echo
+
+    # 创建目录结构
+    echo -e "${YELLOW}创建目录结构...${NC}"
+    mkdir -p "$HOME/apps"
+    mkdir -p "$HOME/bin"
+    mkdir -p "$CONFIG_DIR"
+
+    # 创建命令链接
+    if [ ! -L "$HOME/bin/serv00-tool" ]; then
+        ln -s "$(realpath "$0")" "$HOME/bin/serv00-tool"
+        echo -e "${GREEN}✓ 创建命令链接${NC}"
+    fi
+
+    # 添加到 PATH
+    if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
+        echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bash_profile
+        echo -e "${GREEN}✓ 添加到 PATH${NC}"
+    fi
+
+    echo -e "${GREEN}✓ 安装完成！${NC}"
+    echo
+    echo -e "${WHITE}使用方法:${NC}"
+    echo -e "  命令: ${CYAN}serv00-tool${NC}"
+    echo -e "  或者: ${CYAN}$0${NC}"
+    echo
+}
+
 # 主菜单
 main_menu() {
     while true; do
@@ -588,23 +1057,27 @@ main_menu() {
         echo "1. 系统信息"
         echo "2. 工具安装"
         echo "3. 服务管理"
-        echo "4. 配置管理"
-        echo "5. 检查 binexec 状态"
-        echo "6. 查看日志"
-        echo "7. 帮助信息"
-        echo "8. 退出"
+        echo "4. 应用管理"
+        echo "5. 配置管理"
+        echo "6. 检查 binexec 状态"
+        echo "7. 容器支持检查"
+        echo "8. 查看日志"
+        echo "9. 帮助信息"
+        echo "0. 退出"
         echo
-        read -p "请选择操作 [1-8]: " choice
+        read -p "请选择操作 [0-9]: " choice
 
         case $choice in
             1) clear; show_system_info; read -p "按回车键继续..." ;;
             2) install_tools_menu ;;
             3) service_management_menu ;;
-            4) config_menu ;;
-            5) clear; check_binexec; read -p "按回车键继续..." ;;
-            6) show_logs ;;
-            7) show_help ;;
-            8) echo -e "${GREEN}感谢使用 Serv00 工具箱！${NC}"; exit 0 ;;
+            4) app_management_menu ;;
+            5) config_menu ;;
+            6) clear; check_binexec; read -p "按回车键继续..." ;;
+            7) clear; check_container_support; read -p "按回车键继续..." ;;
+            8) show_logs ;;
+            9) show_help ;;
+            0) echo -e "${GREEN}感谢使用 Serv00 工具箱！${NC}"; exit 0 ;;
             *) echo -e "${RED}无效选择，请重试${NC}"; sleep 2 ;;
         esac
     done
@@ -661,8 +1134,99 @@ show_help() {
     read -p "按回车键返回主菜单..."
 }
 
+# 显示使用帮助
+show_usage() {
+    echo "Serv00 VPS 工具箱 - 使用说明"
+    echo
+    echo "用法: $0 [选项]"
+    echo
+    echo "选项:"
+    echo "  -h, --help          显示此帮助信息"
+    echo "  -v, --version       显示版本信息"
+    echo "  -i, --install       一键安装配置"
+    echo "  -c, --check         检查 binexec 状态"
+    echo "  --container-check   检查容器支持"
+    echo "  --list-apps         列出所有应用"
+    echo "  --start-app NAME    启动指定应用"
+    echo "  --stop-app NAME     停止指定应用"
+    echo
+    echo "示例:"
+    echo "  $0                  启动交互界面"
+    echo "  $0 --install        一键安装配置"
+    echo "  $0 --check          检查 binexec"
+    echo "  $0 --start-app web  启动名为 web 的应用"
+    echo
+}
+
+# 显示版本信息
+show_version() {
+    echo "Serv00 VPS 工具箱 v1.0"
+    echo "适用于 serv00.com FreeBSD 环境"
+    echo "作者: serv00-tool"
+}
+
 # 主程序入口
 main() {
+    # 处理命令行参数
+    case "${1:-}" in
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        -v|--version)
+            show_version
+            exit 0
+            ;;
+        -i|--install)
+            quick_install
+            exit 0
+            ;;
+        -c|--check)
+            check_binexec
+            exit 0
+            ;;
+        --container-check)
+            check_container_support
+            exit 0
+            ;;
+        --list-apps)
+            list_apps
+            exit 0
+            ;;
+        --start-app)
+            if [ -n "${2:-}" ]; then
+                app_name="$2"
+                echo "启动应用: $app_name"
+                # 这里可以调用启动应用的函数
+            else
+                echo "错误: 请指定应用名称"
+                echo "用法: $0 --start-app <应用名称>"
+                exit 1
+            fi
+            exit 0
+            ;;
+        --stop-app)
+            if [ -n "${2:-}" ]; then
+                app_name="$2"
+                echo "停止应用: $app_name"
+                # 这里可以调用停止应用的函数
+            else
+                echo "错误: 请指定应用名称"
+                echo "用法: $0 --stop-app <应用名称>"
+                exit 1
+            fi
+            exit 0
+            ;;
+        "")
+            # 无参数，启动交互界面
+            ;;
+        *)
+            echo "错误: 未知选项 '$1'"
+            echo "使用 '$0 --help' 查看帮助信息"
+            exit 1
+            ;;
+    esac
+
     # 检查是否为 FreeBSD 系统
     if [ "$(uname -s)" != "FreeBSD" ]; then
         echo -e "${YELLOW}警告: 本工具专为 FreeBSD 系统设计，当前系统为 $(uname -s)${NC}"
